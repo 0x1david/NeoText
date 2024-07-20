@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 use std::io::stdout;
 use crossterm::{
     event::{self, Event, KeyCode},
@@ -7,33 +9,33 @@ use crossterm::{
 use anyhow::{Context, Result};
 mod cursor;
 mod modal;
+mod buffer;
 use cursor::Cursor;
+use buffer::TextBuffer;
+use modal::Modal;
 
 
 
-// // Interface acting as the serving API point for the crossterm types
-// struct TDisplay {
-//     content: Vec<String>,
-// }
 
-// /// The main editor is used as the main API for all commands
-// struct MainEditor {
-//     /// In the first implementation I will start with Vec, for simplicity, fairly early to the dev
-//     /// process a better data structure will have to be found and vec replaced;
-//     cursor: Cursor,
-//     mode: ModalEditor,
-//     content: Window,
-//     display:
-// }
 
-// impl MainEditor {
-//     fn new() -> Self {
-//         MainEditor {
-//             content: vec![String::new()],
-//             cursor: Cursor::default(),
-//             mode: ModalEditor::Normal
-//         }
-//     }
+/// The main editor is used as the main API for all commands
+struct MainEditor<Buff: TextBuffer> {
+    /// In the first implementation I will start with Vec, for simplicity, fairly early to the dev
+    /// process a better data structure will have to be found and vec replaced;
+    cursor: Cursor,
+    content: Buff,
+    mode: Modal
+}
+
+impl MainEditor<Buff: TextBuffer> {
+    fn new() -> Self {
+        MainEditor {
+            content: vec![String::new()],
+            cursor: Cursor::default(),
+            mode: Modal::Normal
+        }
+    }
+}
 
 //     fn run(&mut self) -> Result<()> {
 //         terminal::enable_raw_mode()?;
@@ -138,7 +140,7 @@ use cursor::Cursor;
 //     }
 // }
 
-// fn main() -> Result<()> {
-//     let mut editor = MainEditor::new();
-//     editor.run()
-// }
+fn main() -> Result<()> {
+    let mut editor = MainEditor::new();
+    editor.run()
+}
