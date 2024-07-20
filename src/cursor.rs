@@ -1,4 +1,3 @@
-use anyhow::Result;
 use crate::modal::Modal;
 
 /// The overarching cursor struct
@@ -28,39 +27,60 @@ impl Default for Cursor {
 
 
 impl Cursor {
+    /// Moves the cursor one position to the left, if there's left to go to, otherways remains in
+    /// place.
     pub fn bump_left(&mut self) {
         if self.x != 0 {
             self.x -= 1;
         }
     }
+    /// Moves the cursor one position to the right, if there's rightto go to, otherways remains in
+    /// place.
     pub fn bump_right(&mut self) {
         if self.x != self.x_max  {
             self.x += 1;
         }
     }
+    /// Moves the cursor one position up, if there's upper line to go to, otherways remains in
+    /// place.
     pub fn bump_up(&mut self) {
         if self.y != 0 {
             self.y -= 1;
         }
     }
+    /// Moves the cursor one position down, if there's lower line to go to, otherways remains in
+    /// place.
     pub fn bump_down(&mut self) {
         if self.y != self.y_max {
             self.y += 1;
         }
     }
+    /// Moves the cursor left by the specified distance, clamping at zero.
+    /// TODO: Check whether Y is in the allowed boundaries for the new row, if it isnt, update the
+    /// value
     pub fn jump_left(&mut self, dist: usize) {
         self.x = self.x.saturating_sub(dist)
     }
+    /// Moves the cursor right by the specified distance, clamping at the end of a row.
+    /// TODO: Check whether Y is in the allowed boundaries for the new row, if it isnt, update the
+    /// value
     pub fn jump_right(&mut self, dist: usize) {
         self.x = self.x_max.min(self.x + dist);
     }
+    /// Moves the cursor up by the specified distance, clamping at the top.
+    /// TODO: Check whether X is in the allowed boundaries for the new row, if it isnt, update the
+    /// value
     pub fn jump_up(&mut self, dist: usize) {
-        self.y = self.y.saturating_sub(dist)
+        self.y = self.y.saturating_sub(dist);
     }
+    /// Moves the cursor down by the specified distance, clamping at the bottom of the file.
+    /// TODO: Check whether X is in the allowed boundaries for the new row, if it isnt, update the
+    /// value
     pub fn jump_down(&mut self, dist: usize) {
         self.y = self.y_max.min(self.y + dist);
     }
-    pub fn mod_change(&mut self, modal: Modal) {
+    /// Updates the location the cursor points at depeneding on the current active modal state.
+    pub fn mod_change(&mut self, modal: &Modal) {
         match modal {
             Modal::Command => self.loc = CursorLoc::CommandBar,
             _ => self.loc = CursorLoc::Text,
