@@ -1,5 +1,3 @@
-#![allow(dead_code, unused_imports)]
-
 use std::io::stdout;
 use crossterm::{
     event::{self, Event, KeyCode},
@@ -12,7 +10,6 @@ mod modal;
 mod buffer;
 use cursor::Cursor;
 use buffer::TextBuffer;
-use modal::Modal;
 
 
 
@@ -24,18 +21,16 @@ struct MainEditor<Buff: TextBuffer> {
     /// process a better data structure will have to be found and vec replaced;
     cursor: Cursor,
     content: Buff,
-    mode: Modal
 }
 
-impl MainEditor<Buff: TextBuffer> {
-    fn new() -> Self {
-        MainEditor {
-            content: vec![String::new()],
-            cursor: Cursor::default(),
-            mode: Modal::Normal
-        }
-    }
-}
+// impl MainEditor {
+//     fn new() -> Self {
+//         MainEditor {
+//             content: vec![String::new()],
+//             cursor: Cursor::default(),
+//             mode: ModalEditor::Normal
+//         }
+//     }
 
 //     fn run(&mut self) -> Result<()> {
 //         terminal::enable_raw_mode()?;
@@ -140,7 +135,7 @@ impl MainEditor<Buff: TextBuffer> {
 //     }
 // }
 
-fn main() -> Result<()> {
-    let mut editor = MainEditor::new();
-    editor.run()
-}
+// fn main() -> Result<()> {
+//     let mut editor = MainEditor::new();
+//     editor.run()
+// }

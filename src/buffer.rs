@@ -1,19 +1,21 @@
 use std::{collections::VecDeque, ops::Range};
+use crate::cursor::{Cursor, LineCol};
+
 
 
 /// Trait defining the interface for a text buffer
 pub trait TextBuffer {
     /// Insert text at the specified position
-    fn insert(&mut self, position: usize, text: &str) -> Result<(), BufferError>;
+    fn insert(&mut self, cursor: &mut Cursor, text: &str) -> Result<(), BufferError>;
 
     /// Delete text in the specified range
-    fn delete(&mut self, range: Range<usize>) -> Result<(), BufferError>;
+    fn delete(&mut self, from: LineCol, to: LineCol) -> Result<(), BufferError>;
 
     /// Replace text in the specified range with new text
-    fn replace(&mut self, range: Range<usize>, text: &str) -> Result<(), BufferError>;
+    fn replace(&mut self, from: LineCol, to: LineCol, text: &str) -> Result<(), BufferError>;
 
     /// Get the text in the specified range
-    fn get_text(&self, range: Range<usize>) -> Result<String, BufferError>;
+    fn get_text(&self, from: LineCol, to: LineCol) -> Result<String, BufferError>;
 
     /// Get the length of the entire buffer
     fn len(&self) -> usize;
@@ -27,19 +29,13 @@ pub trait TextBuffer {
     fn line_count(&self) -> usize;
 
     /// Get the contents of a specific line
-    fn line(&self, line_number: usize) -> Result<String, BufferError>;
-
-    /// Convert a position to a (line, column) pair
-    fn position_to_line_col(&self, position: usize) -> Result<(usize, usize), BufferError>;
-
-    /// Convert a (line, column) pair to a position
-    fn line_col_to_position(&self, line: usize, column: usize) -> Result<usize, BufferError>;
+    fn line(&self, line_number: usize) -> Result<&str, BufferError>;
 
     /// Find the next occurrence of a substring
-    fn find(&self, query: &str, start_position: usize) -> Option<usize>;
+    fn find(&self, query: &str, cursor: Cursor) -> Option<usize>;
 
     /// Find the previous occurrence of a substring
-    fn rfind(&self, query: &str, start_position: usize) -> Option<usize>;
+    fn rfind(&self, query: &str, cursor: Cursor) -> Option<usize>;
 
     /// Undo the last operation
     fn undo(&mut self) -> Result<(), BufferError>;
@@ -107,7 +103,7 @@ pub struct VecBuffer {
 
 impl TextBuffer for VecBuffer {
     /// Performs a redo operation, moving the current state to the next future state if available.
-    /// Returns an error if there are no future states to redo to.
+    /// Returns an error if there are no `future` states to redo to.
     fn redo(&mut self) -> Result<(), BufferError> {
         self.future.pop()
             .map(|future_state| {
@@ -121,7 +117,7 @@ impl TextBuffer for VecBuffer {
     }
 
     /// Performs an undo operation, moving the current state to the previous past state if available.
-    /// Returns an error if there are no past states to undo to.
+    /// Returns an error if there are no `past` states to undo to.
     fn undo(&mut self) -> Result<(), BufferError> {
         self.past.pop()
             .map(|past_state| {
@@ -133,5 +129,143 @@ impl TextBuffer for VecBuffer {
                 |_| Ok(())
             )
     }
+
+    fn find(&self, query: &str, cursor: Cursor) -> Option<usize> {
+        let (_, right) = self.lines[cursor.line()].split_at(cursor.col());
+        right.find(&query)
+    }
+
+    fn rfind(&self, query: &str, cursor: Cursor) -> Option<usize> {
+        let (_, left) = self.lines[cursor.line()].split_at(cursor.col());
+        left.find(&query)
+    }
+
+    fn len(&self) -> usize {
+        // Currently length of the entire file seems unnecessary to implement. If I realize it
+        // needs to be implemented it might be as a counter at the level of a struct attribute.
+        0
+    }
+
+    fn line_count(&self) -> usize {
+        self.lines.len()
+    }
+    fn line(&self, line_number: usize) -> Result<&str, BufferError> {
+        if line_number >= 0 && line_number <= self.line_count() {
+            Ok(self.lines.get(line_number).expect("Checks already passed"))
+        } else {
+            Err(BufferError::InvalidLineNumber)
+        }
+    }
+    fn get_text(&self, from: LineCol, to: LineCol) -> Result<String, BufferError> {
+        if from.0 > to.0 || (from.0 == to.0 && from.1 > to.1) {
+            return Err(BufferError::InvalidRange);
+        }
+
+        if from.0 >= self.lines.len() || to.0 >= self.lines.len() {
+            return Err(BufferError::InvalidRange);
+        }
+
+        let mut result = String::new();
+
+        if from.0 == to.0 {
+            result.push_str(&self.lines[from.0][from.1..to.1]);
+        } else {
+            result.push_str(&self.lines[from.0][from.1..]);
+            result.push('\n');
+
+            for line in &self.lines[from.0 + 1..to.0] {
+                result.push_str(line);
+                result.push('\n');
+            }
+
+            result.push_str(&self.lines[to.0][..to.1]);
+        }
+
+        Ok(result)
+    }
+
+    fn replace(&mut self, from: LineCol, to: LineCol, text: &str) -> Result<(), BufferError> {
+       let mut lines = text.lines();
+
+       let (left, _) = self.lines[from.0].split_at(from.1);
+       let mut new_first_line = String::new();
+
+       new_first_line.push_str(left);
+       if let Some(l) = lines.next() {
+           new_first_line.push_str(l);
+       }
+
+       let _ = std::mem::replace(&mut self.lines[from.0], new_first_line);
+       if self.lines[from.0].is_empty() {
+           self.lines.remove(from.0);
+       }
+
+       for l in from.0+1..=to.0 {
+           if l == to.0 {
+               let (_, right) = self.lines[to.0].split_at(to.1);
+               let mut new_last_line = String::new();
+               new_last_line.push_str(lines.next().expect("Shouldn't be trying to replace with nothing."));
+               new_last_line.push_str(right);
+               let _ = std::mem::replace(&mut self.lines[to.0], new_last_line);
+           } else if let Some(new_line) = lines.next() {
+               let _ = std::mem::replace(&mut self.lines[l], new_line.to_string());
+           } else {
+               self.lines.remove(l);
+           }
+       }
+       Ok(())
+    }
+    fn insert(&mut self, cursor: &mut Cursor, text: &str) -> Result<(), BufferError> {
+        unimplemented!()
+    }
+    fn delete(&mut self, from: LineCol, to: LineCol) -> Result<(), BufferError> {
+        unimplemented!()
+    }
+    fn is_empty(&self) -> bool {
+        self.lines.is_empty()
+    }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_replace() {
+        let mut buffer = VecBuffer {
+            lines: vec![
+                "First line".to_string(),
+                "Second line".to_string(),
+                "Third line".to_string(),
+            ],
+            past: Stack { content: VecDeque::new() },
+            future: Stack { content: VecDeque::new() },
+        };
+
+        // Test replacing within a single line
+        buffer.replace(LineCol(0, 6), LineCol(0, 10), "text").unwrap();
+        assert_eq!(buffer.lines[0], "First text");
+
+        // Test replacing across multiple lines
+        buffer.replace(LineCol(0, 6), LineCol(2, 5), "new\nreplacement\ntext").unwrap();
+        assert_eq!(buffer.lines, vec![
+            "First new".to_string(),
+            "replacement".to_string(),
+            "text line".to_string(),
+        ]);
+
+        // Test replacing with empty string (deletion)
+        buffer.replace(LineCol(1, 0), LineCol(1, 11), "").unwrap();
+        assert_eq!(buffer.lines, vec![
+            "First new".to_string(),
+            "text line".to_string(),
+        ]);
+
+        // Test replacing at the end of the buffer
+        buffer.replace(LineCol(1, 4), LineCol(1, 9), "replacement").unwrap();
+        assert_eq!(buffer.lines, vec![
+            "First new".to_string(),
+            "textreplacement".to_string(),
+        ]);
+    }
+}
