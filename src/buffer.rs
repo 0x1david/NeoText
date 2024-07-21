@@ -183,7 +183,24 @@ impl TextBuffer for VecBuffer {
 
         Ok(result)
     }
-
+    /// Replaces a range of text in the buffer with new text.
+    ///
+    /// # Arguments
+    ///
+    /// * `from` - The starting position (line and column) of the text to be replaced.
+    /// * `to` - The ending position (line and column) of the text to be replaced.
+    /// * `text` - The new text to insert in place of the replaced range.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the replacement was successful.
+    /// * `Err(BufferError)` if an error occurred during the replacement.
+    ///
+    /// # Behavior
+    ///
+    /// This function replaces the text between `from` and `to` positions with the provided `text`.
+    /// It handles multi-line replacements, including cases where the new text may have more or fewer
+    /// lines than the replaced range. Empty lines resulting from the replacement are removed.
     fn replace(&mut self, from: LineCol, to: LineCol, text: &str) -> Result<(), BufferError> {
        let mut lines = text.lines();
 
@@ -203,16 +220,22 @@ impl TextBuffer for VecBuffer {
        for l in from.0+1..=to.0 {
            if l == to.0 {
                let (_, right) = self.lines[to.0].split_at(to.1);
-               let mut new_last_line = String::new();
-               new_last_line.push_str(lines.next().expect("Shouldn't be trying to replace with nothing."));
-               new_last_line.push_str(right);
-               let _ = std::mem::replace(&mut self.lines[to.0], new_last_line);
+               let new_last_line = format!("{}{}", lines.next().unwrap_or(""), right);
+               if new_last_line.is_empty() {
+                   self.lines.remove(l);
+               } else {
+                   let _ = std::mem::replace(&mut self.lines[to.0], new_last_line);
+               }
            } else if let Some(new_line) = lines.next() {
                let _ = std::mem::replace(&mut self.lines[l], new_line.to_string());
            } else {
                self.lines.remove(l);
            }
        }
+       let overflow = to.0 + 1;
+       lines.for_each(|line| {
+           self.lines[overflow] = line.to_string();
+       });
        Ok(())
     }
     fn insert(&mut self, cursor: &mut Cursor, text: &str) -> Result<(), BufferError> {
@@ -225,14 +248,11 @@ impl TextBuffer for VecBuffer {
         self.lines.is_empty()
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_replace() {
-        let mut buffer = VecBuffer {
+    fn new_test_buffer() -> VecBuffer {
+        VecBuffer {
             lines: vec![
                 "First line".to_string(),
                 "Second line".to_string(),
@@ -240,32 +260,68 @@ mod tests {
             ],
             past: Stack { content: VecDeque::new() },
             future: Stack { content: VecDeque::new() },
-        };
+        }
+    }
 
-        // Test replacing within a single line
-        buffer.replace(LineCol(0, 6), LineCol(0, 10), "text").unwrap();
-        assert_eq!(buffer.lines[0], "First text");
+    #[test]
+    fn test_replace_within_single_line() {
+        let mut buf = new_test_buffer();
+        buf.replace(LineCol(0, 6), LineCol(0, 10), "text").unwrap();
+        assert_eq!(buf.lines[0], "First text");
+    }
 
-        // Test replacing across multiple lines
-        buffer.replace(LineCol(0, 6), LineCol(2, 5), "new\nreplacement\ntext").unwrap();
-        assert_eq!(buffer.lines, vec![
+    #[test]
+    fn test_replace_across_multiple_lines() {
+        let mut buf = new_test_buffer();
+        buf.replace(LineCol(0, 6), LineCol(2, 5), "new\nreplacement\ntext").unwrap();
+        assert_eq!(buf.lines, vec![
             "First new".to_string(),
             "replacement".to_string(),
             "text line".to_string(),
         ]);
+    }
 
-        // Test replacing with empty string (deletion)
-        buffer.replace(LineCol(1, 0), LineCol(1, 11), "").unwrap();
-        assert_eq!(buffer.lines, vec![
-            "First new".to_string(),
-            "text line".to_string(),
+    #[test]
+    fn test_replacing_with_empty_string() {
+        let mut buf = new_test_buffer();
+        buf.replace(LineCol(1, 0), LineCol(1, 11), "").unwrap();
+        assert_eq!(buf.lines, vec![
+            "First line".to_string(),
+            "Third line".to_string(),
         ]);
+    }
 
-        // Test replacing at the end of the buffer
-        buffer.replace(LineCol(1, 4), LineCol(1, 9), "replacement").unwrap();
-        assert_eq!(buffer.lines, vec![
+    #[test]
+    fn test_replacing_at_line_end() {
+        let mut buf = new_test_buffer();
+        buf.replace(LineCol(1, 7), LineCol(1, 11), "replacement").unwrap();
+        assert_eq!(buf.lines, vec![
+            "First line".to_string(),
+            "Second replacement".to_string(),
+            "Third line".to_string(),
+        ]);
+    }
+
+    #[test]
+    fn test_replacing_with_overflowing_lines() {
+        let mut buf = new_test_buffer();
+        buf.replace(LineCol(0, 6), LineCol(2, 5), "new\nreplacement\ntext\nthisalso").unwrap();
+        assert_eq!(buf.lines, vec![
             "First new".to_string(),
-            "textreplacement".to_string(),
+            "replacement".to_string(),
+            "text".to_string(),
+            "thisalso line".to_string()
+        ]);
+    }
+
+    #[test]
+    fn test_replacing_at_buffer_end() {
+        let mut buf = new_test_buffer();
+        buf.replace(LineCol(2, 5), LineCol(2, 10), "replacement").unwrap();
+        assert_eq!(buf.lines, vec![
+            "First line".to_string(),
+            "Second line".to_string(),
+            "Third replacement".to_string(),
         ]);
     }
 }
