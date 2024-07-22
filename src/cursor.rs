@@ -1,6 +1,6 @@
 use crate::modal::Modal;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct LineCol {
     pub line: usize,
     pub col: usize,

@@ -1,6 +1,8 @@
 use anyhow::Result;
 /// Contains the main modal variants of the editor.
+#[derive(Default)]
 pub enum Modal {
+    #[default]
     Normal,
     Insert,
     Visual,

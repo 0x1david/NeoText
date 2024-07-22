@@ -4,11 +4,12 @@ use crossterm::{
     execute,
     terminal::{self, ClearType},
 };
+use modal::Modal;
 use std::io::stdout;
 mod buffer;
 mod cursor;
 mod modal;
-use buffer::TextBuffer;
+use buffer::{TextBuffer, VecBuffer};
 use cursor::Cursor;
 
 /// The main editor is used as the main API for all commands
@@ -19,14 +20,15 @@ struct MainEditor<Buff: TextBuffer> {
     content: Buff,
 }
 
-// impl MainEditor {
-//     fn new() -> Self {
-//         MainEditor {
-//             content: vec![String::new()],
-//             cursor: Cursor::default(),
-//             mode: ModalEditor::Normal
-//         }
-//     }
+impl<Buff: TextBuffer> MainEditor<Buff> {
+    fn new(buffer: Buff) -> Self {
+        MainEditor {
+            content: buffer,
+            cursor: Cursor::default(),
+            // mode: Modal::default(),
+        }
+    }
+}
 
 //     fn run(&mut self) -> Result<()> {
 //         terminal::enable_raw_mode()?;
@@ -132,6 +134,6 @@ struct MainEditor<Buff: TextBuffer> {
 // }
 
 // fn main() -> Result<()> {
-//     let mut editor = MainEditor::new();
-//     editor.run()
+//     let mut editor = MainEditor::new(VecBuffer::default());
+//     // editor.run()
 // }
