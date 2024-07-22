@@ -90,7 +90,7 @@ impl<T> Stack<T> {
 }
 
 /// A buffer implementation for storing text as a vector of lines,
-/// with undo and redo functionality.
+/// with undo and redo functionality. Highly inefficient, both tim complexity wise and implementation wise. Simply a placeholder for testing.
 pub struct VecBuffer {
     /// The current state of the text, stored as a vector of lines.
     lines: Vec<String>,
