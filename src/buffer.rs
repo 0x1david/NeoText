@@ -4,7 +4,7 @@ use std::{collections::VecDeque, ops::Range};
 /// Trait defining the interface for a text buffer
 pub trait TextBuffer {
     /// Insert text at the specified position
-    fn insert(&mut self, at: &LineCol, text: &str) -> Result<(), BufferError>;
+    fn insert(&mut self, at: &LineCol, text: String, newline: bool) -> Result<(), BufferError>;
 
     /// Delete text in the specified range
     fn delete(&mut self, from: &LineCol, to: &LineCol) -> Result<(), BufferError>;
@@ -152,7 +152,7 @@ impl TextBuffer for VecBuffer {
     /// ```
     fn find(&self, query: &str, at: &LineCol) -> Result<LineCol, BufferError> {
         if query.is_empty() {
-            return Err(BufferError::InvalidInput)
+            return Err(BufferError::InvalidInput);
         }
         let mut current_line = at.line;
         let mut current_col = at.col;
@@ -160,7 +160,10 @@ impl TextBuffer for VecBuffer {
         while current_line < self.lines.len() {
             if let Some(line) = self.lines.get(current_line) {
                 if let Some(pos) = line[current_col..].find(query) {
-                    return Ok(LineCol{line: current_line,  col: current_col + pos});
+                    return Ok(LineCol {
+                        line: current_line,
+                        col: current_col + pos,
+                    });
                 }
             }
             current_line += 1;
@@ -199,7 +202,7 @@ impl TextBuffer for VecBuffer {
     /// ```
     fn rfind(&self, query: &str, at: &LineCol) -> Result<LineCol, BufferError> {
         if query.is_empty() {
-            return Err(BufferError::InvalidInput)
+            return Err(BufferError::InvalidInput);
         }
         let mut current_line = at.line;
         let mut current_col = at.col;
@@ -207,11 +210,14 @@ impl TextBuffer for VecBuffer {
         loop {
             if let Some(line) = self.lines.get(current_line) {
                 if let Some(pos) = line[..current_col].rfind(query) {
-                    return Ok(LineCol{line: current_line,  col:pos});
+                    return Ok(LineCol {
+                        line: current_line,
+                        col: pos,
+                    });
                 }
             }
             if current_line == 0 {
-                break
+                break;
             }
             current_line -= 1;
             current_col = self.lines[current_line].len();
@@ -273,8 +279,8 @@ impl TextBuffer for VecBuffer {
     /// ```
     fn get_text(&self, from: &LineCol, to: &LineCol) -> Result<String, BufferError> {
         let start_exceeds_end = from.line > to.line || (from.line == to.line && from.col > to.col);
-        let exceeds_file_len = from.line >= self.lines.len() 
-            || to.line >= self.lines.len() 
+        let exceeds_file_len = from.line >= self.lines.len()
+            || to.line >= self.lines.len()
             || from.col > self.lines[from.line].len()
             || to.col > self.lines[to.line].len();
         if start_exceeds_end || exceeds_file_len {
@@ -338,7 +344,7 @@ impl TextBuffer for VecBuffer {
     /// Returns `BufferError::InvalidInput` if `text` is empty.
     fn replace(&mut self, from: &LineCol, to: &LineCol, text: &str) -> Result<(), BufferError> {
         if text.is_empty() {
-            return Err(BufferError::InvalidInput)
+            return Err(BufferError::InvalidInput);
         }
         let mut new_lines = Vec::new();
         let mut lines = text.lines();
@@ -359,11 +365,145 @@ impl TextBuffer for VecBuffer {
 
         Ok(())
     }
-    fn insert(&mut self, at: &LineCol, text: &str) -> Result<(), BufferError> {
-        unimplemented!()
+    /// Inserts text into the buffer at the specified position.
+    ///
+    /// # Arguments
+    ///
+    /// * `at` - A `LineCol` struct specifying the line and column where the insertion should begin.
+    /// * `text` - The string to be inserted.
+    /// * `newline` - A boolean flag indicating whether the text should be inserted as new line(s).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the insertion was successful.
+    /// * `Err(BufferError::InvalidPosition)` if the specified position is out of bounds.
+    ///
+    /// # Behavior
+    ///
+    /// If `newline` is true:
+    ///   - The entire `text` is inserted as new line(s) starting at the specified line.
+    ///   - Existing lines at and after the insertion point are shifted down.
+    ///
+    /// If `newline` is false:
+    ///   - The text is inserted at the specified position within the existing line.
+    ///   - If `text` contains multiple lines, it splits the current line and inserts the new lines.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut buffer = // ... initialize buffer ...
+    /// let result = buffer.insert(&LineCol { line: 1, col: 5 }, "Hello, world!".to_string(), false);
+    /// assert!(result.is_ok());
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// This function may change the structure of the buffer by adding or modifying lines.
+    /// It's the caller's responsibility to ensure that any existing references or indices
+    /// into the buffer are updated appropriately after calling this function.
+    fn insert(&mut self, at: &LineCol, text: String, newline: bool) -> Result<(), BufferError> {
+        if at.line >= self.lines.len() || at.col > self.lines[at.line].len() {
+            return Err(BufferError::InvalidPosition);
+        }
+        let mut lines: Vec<String> = text.lines().map(String::from).collect();
+        if newline {
+            self.lines.clone().into_iter().for_each(|line| {
+                self.lines.insert(at.line, line);
+            })
+        } else {
+            let current_line = &mut self.lines[at.line];
+            let tail = current_line.split_off(at.col);
+            current_line.push_str(&lines[0]);
+
+            if lines.len() > 1 {
+                lines.last_mut().unwrap().push_str(&tail);
+                self.lines
+                    .splice(at.line + 1..at.line + 1, lines.into_iter().skip(1));
+            } else {
+                current_line.push_str(&tail);
+            }
+        };
+        Ok(())
     }
+    /// Deletes text from the buffer within the specified range.
+    ///
+    /// # Arguments
+    ///
+    /// * `from` - The starting position (line and column) of the text to delete, inclusive.
+    /// * `to` - The ending position (line and column) of the text to delete, exclusive.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the deletion was successful.
+    /// * `Err(BufferError::InvalidRange)` if the specified range is invalid.
+    ///
+    /// # Behavior
+    ///
+    /// This function removes text from the buffer between the `from` and `to` positions.
+    /// It handles various scenarios:
+    ///
+    /// 1. Full line deletion: If the range starts at the beginning of a line and ends at or beyond
+    ///    the end of a line (possibly spanning multiple lines), it removes entire lines.
+    /// 2. Single line deletion: If `from` and `to` are on the same line, it removes the specified
+    ///    range within that line.
+    /// 3. Multi-line deletion: If the range spans multiple lines, it removes the specified content
+    ///    and joins the remaining parts of the first and last lines.
+    ///
+    /// # Errors
+    ///
+    /// Returns `BufferError::InvalidRange` in the following cases:
+    /// - If either `from` or `to` positions are beyond the buffer's contents.
+    /// - If `from` position comes after `to` position.
+    /// - If `from` and `to` are the same position.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut buffer = // ... initialize buffer ...
+    /// let from = LineCol { line: 1, col: 5 };
+    /// let to = LineCol { line: 2, col: 10 };
+    /// match buffer.delete(&from, &to) {
+    ///     Ok(_) => println!("Text deleted successfully"),
+    ///     Err(BufferError::InvalidRange) => println!("Invalid range specified"),
+    ///     Err(_) => println!("An error occurred"),
+    /// }
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// This function modifies the buffer's content. After calling this function,
+    /// line numbers and column positions after the deleted range may change.
     fn delete(&mut self, from: &LineCol, to: &LineCol) -> Result<(), BufferError> {
-        unimplemented!()
+        if from.line >= self.lines.len()
+            || to.line >= self.lines.len()
+            || (from.line == to.line && from.col > to.col)
+            || from.line > to.line
+            || from == to
+        {
+            return Err(BufferError::InvalidRange);
+        }
+
+        if from.col == 0 && to.col >= self.lines[to.line].len() {
+            self.lines.drain(from.line..=to.line);
+            return Ok(())
+        }
+
+        if from.line == to.line {
+            let line = &mut self.lines[from.line];
+            if from.col == 0 && to.col >= line.len() {
+                self.lines.remove(from.line);
+            } else if to.col >= line.len() {
+                line.truncate(from.col);
+            } else {
+                line.replace_range(from.col..to.col, "");
+            }
+        } else {
+            let new_last_line = self.lines[to.line].split_off(to.col);
+            self.lines[from.line].truncate(from.col);
+            self.lines[from.line].push_str(&new_last_line);
+            self.lines.drain(from.line + 1..=to.line);
+        }
+        Ok(())
     }
     fn is_empty(&self) -> bool {
         self.lines.is_empty()
@@ -394,16 +534,24 @@ mod tests {
     #[test]
     fn test_replace_within_single_line() {
         let mut buf = new_test_buffer();
-        buf.replace(&LineCol{line: 0, col: 6}, &LineCol{line: 0, col: 10}, "text")
-            .unwrap();
+        buf.replace(
+            &LineCol { line: 0, col: 6 },
+            &LineCol { line: 0, col: 10 },
+            "text",
+        )
+        .unwrap();
         assert_eq!(buf.lines[0], "First text");
     }
 
     #[test]
     fn test_replace_across_multiple_lines() {
         let mut buf = new_test_buffer();
-        buf.replace(&LineCol{line: 0, col: 6}, &LineCol{line: 2, col: 5}, "new\nreplacement\ntext")
-            .unwrap();
+        buf.replace(
+            &LineCol { line: 0, col: 6 },
+            &LineCol { line: 2, col: 5 },
+            "new\nreplacement\ntext",
+        )
+        .unwrap();
         assert_eq!(
             buf.lines,
             vec![
@@ -417,18 +565,23 @@ mod tests {
     #[test]
     fn test_replacing_with_empty_string() {
         let mut buf = new_test_buffer();
-        let res = buf.replace(&LineCol{line: 1, col: 0}, &LineCol{line: 1, col: 11}, "");
-        assert_eq!(
-            res,
-            Err(BufferError::InvalidInput)
+        let res = buf.replace(
+            &LineCol { line: 1, col: 0 },
+            &LineCol { line: 1, col: 11 },
+            "",
         );
+        assert_eq!(res, Err(BufferError::InvalidInput));
     }
 
     #[test]
     fn test_replacing_at_line_end() {
         let mut buf = new_test_buffer();
-        buf.replace(&LineCol{line: 1, col: 7}, &LineCol{line: 1, col: 11}, "replacement")
-            .unwrap();
+        buf.replace(
+            &LineCol { line: 1, col: 7 },
+            &LineCol { line: 1, col: 11 },
+            "replacement",
+        )
+        .unwrap();
         assert_eq!(
             buf.lines,
             vec![
@@ -443,8 +596,8 @@ mod tests {
     fn test_replacing_with_more_new_lines_than_old() {
         let mut buf = new_test_buffer();
         buf.replace(
-            &LineCol{line: 0, col: 6},
-            &LineCol{line: 2, col: 5},
+            &LineCol { line: 0, col: 6 },
+            &LineCol { line: 2, col: 5 },
             "new\nreplacement\ntext\nthis also",
         )
         .unwrap();
@@ -462,8 +615,12 @@ mod tests {
     #[test]
     fn test_replacing_at_buffer_end() {
         let mut buf = new_test_buffer();
-        buf.replace(&LineCol{line: 2, col: 6}, &LineCol{line: 2, col: 10}, "replacement")
-            .unwrap();
+        buf.replace(
+            &LineCol { line: 2, col: 6 },
+            &LineCol { line: 2, col: 10 },
+            "replacement",
+        )
+        .unwrap();
         assert_eq!(
             buf.lines,
             vec![
@@ -472,7 +629,7 @@ mod tests {
                 "Third replacement".to_string(),
             ]
         );
-    } 
+    }
 
     /// "First line with some text"
     /// "Second line also has text"
@@ -484,92 +641,138 @@ mod tests {
                 "Second line also has text".to_string(),
                 "Third line is here too".to_string(),
             ],
-            past: Stack { content: VecDeque::new() },
-            future: Stack { content: VecDeque::new() },
+            past: Stack {
+                content: VecDeque::new(),
+            },
+            future: Stack {
+                content: VecDeque::new(),
+            },
         }
     }
 
     #[test]
     fn test_rfind_basic() {
         let buf = new_test_buffer_find();
-        assert_eq!(buf.rfind("line", &LineCol{line: 2, col: 0}), Ok(LineCol{line: 1, col: 7}));
+        assert_eq!(
+            buf.rfind("line", &LineCol { line: 2, col: 0 }),
+            Ok(LineCol { line: 1, col: 7 })
+        );
     }
 
     #[test]
     fn test_rfind_not_including_start() {
         let buf = new_test_buffer_find();
-        assert_eq!(buf.rfind("line", &LineCol{line: 1, col: 7}), Ok(LineCol{line: 0, col: 6}));
+        assert_eq!(
+            buf.rfind("line", &LineCol { line: 1, col: 7 }),
+            Ok(LineCol { line: 0, col: 6 })
+        );
     }
 
     #[test]
     fn test_rfind_across_lines() {
         let buf = new_test_buffer_find();
-        assert_eq!(buf.rfind("First", &LineCol{line: 2, col: 0}), Ok(LineCol{line: 0, col: 0}));
+        assert_eq!(
+            buf.rfind("First", &LineCol { line: 2, col: 0 }),
+            Ok(LineCol { line: 0, col: 0 })
+        );
     }
 
     #[test]
     fn test_rfind_at_start_of_buffer() {
         let buf = new_test_buffer_find();
-        assert_eq!(buf.rfind("First", &LineCol{line: 0, col: 4}), Err(BufferError::PatternNotFound));
+        assert_eq!(
+            buf.rfind("First", &LineCol { line: 0, col: 4 }),
+            Err(BufferError::PatternNotFound)
+        );
     }
 
     #[test]
     fn test_rfind_pattern_not_found() {
         let buf = new_test_buffer_find();
-        assert_eq!(buf.rfind("nonexistent", &LineCol{line: 2, col: 0}), Err(BufferError::PatternNotFound));
+        assert_eq!(
+            buf.rfind("nonexistent", &LineCol { line: 2, col: 0 }),
+            Err(BufferError::PatternNotFound)
+        );
     }
 
     #[test]
     fn test_rfind_empty_query() {
         let buf = new_test_buffer_find();
-        assert_eq!(buf.rfind("", &LineCol{line: 1, col: 5}), Err(BufferError::InvalidInput));
+        assert_eq!(
+            buf.rfind("", &LineCol { line: 1, col: 5 }),
+            Err(BufferError::InvalidInput)
+        );
     }
 
     #[test]
     fn test_rfind_at_end_of_buffer() {
         let buf = new_test_buffer_find();
-        assert_eq!(buf.rfind("too", &LineCol{line: 2, col: 22}), Ok(LineCol{line: 2, col: 19}));
+        assert_eq!(
+            buf.rfind("too", &LineCol { line: 2, col: 22 }),
+            Ok(LineCol { line: 2, col: 19 })
+        );
     }
     #[test]
     fn test_find_basic() {
         let buf = new_test_buffer_find();
-        assert_eq!(buf.find("line", &LineCol{line: 0, col: 0}), Ok(LineCol{line: 0, col: 6}));
+        assert_eq!(
+            buf.find("line", &LineCol { line: 0, col: 0 }),
+            Ok(LineCol { line: 0, col: 6 })
+        );
     }
 
     #[test]
     fn test_find_from_middle() {
         let buf = new_test_buffer_find();
-        assert_eq!(buf.find("text", &LineCol{line: 0, col: 10}), Ok(LineCol{line: 0, col: 21}));
+        assert_eq!(
+            buf.find("text", &LineCol { line: 0, col: 10 }),
+            Ok(LineCol { line: 0, col: 21 })
+        );
     }
 
     #[test]
     fn test_find_across_lines() {
         let buf = new_test_buffer_find();
-        assert_eq!(buf.find("Second", &LineCol{line: 0, col: 22}), Ok(LineCol{line: 1, col: 0}));
+        assert_eq!(
+            buf.find("Second", &LineCol { line: 0, col: 22 }),
+            Ok(LineCol { line: 1, col: 0 })
+        );
     }
 
     #[test]
     fn test_find_at_start_of_line() {
         let buf = new_test_buffer_find();
-        assert_eq!(buf.find("Third", &LineCol{line: 2, col: 0}), Ok(LineCol{line: 2, col: 0}));
+        assert_eq!(
+            buf.find("Third", &LineCol { line: 2, col: 0 }),
+            Ok(LineCol { line: 2, col: 0 })
+        );
     }
 
     #[test]
     fn test_find_at_end_of_line() {
         let buf = new_test_buffer_find();
-        assert_eq!(buf.find("text", &LineCol{line: 1, col: 0}), Ok(LineCol{line: 1, col: 21}));
+        assert_eq!(
+            buf.find("text", &LineCol { line: 1, col: 0 }),
+            Ok(LineCol { line: 1, col: 21 })
+        );
     }
 
     #[test]
     fn test_find_pattern_not_found() {
         let buf = new_test_buffer_find();
-        assert_eq!(buf.find("nonexistent", &LineCol{line: 0, col: 0}), Err(BufferError::PatternNotFound));
+        assert_eq!(
+            buf.find("nonexistent", &LineCol { line: 0, col: 0 }),
+            Err(BufferError::PatternNotFound)
+        );
     }
 
     #[test]
     fn test_find_empty_query() {
         let buf = new_test_buffer_find();
-        assert_eq!(buf.find("", &LineCol{line: 1, col: 5}), Err(BufferError::InvalidInput));
+        assert_eq!(
+            buf.find("", &LineCol { line: 1, col: 5 }),
+            Err(BufferError::InvalidInput)
+        );
     }
 
     #[test]
@@ -577,27 +780,45 @@ mod tests {
         let buf = new_test_buffer_find();
         let last_line = buf.lines.len() - 1;
         let last_col = buf.lines[last_line].len();
-        assert_eq!(buf.find("too", &LineCol{line: last_line, col: last_col}), Err(BufferError::PatternNotFound));
+        assert_eq!(
+            buf.find(
+                "too",
+                &LineCol {
+                    line: last_line,
+                    col: last_col
+                }
+            ),
+            Err(BufferError::PatternNotFound)
+        );
     }
 
     #[test]
     fn test_find_exact_position() {
         let buf = new_test_buffer_find();
-        assert_eq!(buf.find("Second", &LineCol{line: 1, col: 0}), Ok(LineCol{line: 1, col: 0}));
+        assert_eq!(
+            buf.find("Second", &LineCol { line: 1, col: 0 }),
+            Ok(LineCol { line: 1, col: 0 })
+        );
     }
 
     #[test]
     fn test_find_multiple_occurrences() {
         let buf = new_test_buffer_find();
-        assert_eq!(buf.find("line", &LineCol{line: 0, col: 7}), Ok(LineCol{line: 1, col: 7}));
+        assert_eq!(
+            buf.find("line", &LineCol { line: 0, col: 7 }),
+            Ok(LineCol { line: 1, col: 7 })
+        );
     }
 
     #[test]
     fn test_find_from_empty_line() {
         let mut buf = new_test_buffer_find();
         buf.lines.insert(1, String::new());
-        assert_eq!(buf.find("Third", &LineCol{line: 1, col: 0}), Ok(LineCol{line: 3, col: 0}));
-    } 
+        assert_eq!(
+            buf.find("Third", &LineCol { line: 1, col: 0 }),
+            Ok(LineCol { line: 3, col: 0 })
+        );
+    }
     /// "First line"
     /// "Second line"
     /// "Third line"
@@ -610,22 +831,29 @@ mod tests {
                 "Third line".to_string(),
                 "Fourth line".to_string(),
             ],
-            past: Stack { content: VecDeque::new() },
-            future: Stack { content: VecDeque::new() },
+            past: Stack {
+                content: VecDeque::new(),
+            },
+            future: Stack {
+                content: VecDeque::new(),
+            },
         }
     }
 
     #[test]
     fn test_get_text_single_line() {
         let buffer = new_test_buffer_get();
-        assert_eq!(buffer.get_text(&LineCol{line: 0, col: 0}, &LineCol{line: 0, col: 5}), Ok("First".to_string()));
+        assert_eq!(
+            buffer.get_text(&LineCol { line: 0, col: 0 }, &LineCol { line: 0, col: 5 }),
+            Ok("First".to_string())
+        );
     }
 
     #[test]
     fn test_get_text_multiple_lines() {
         let buffer = new_test_buffer_get();
         assert_eq!(
-            buffer.get_text(&LineCol{line: 0, col: 6}, &LineCol{line: 2, col: 5}),
+            buffer.get_text(&LineCol { line: 0, col: 6 }, &LineCol { line: 2, col: 5 }),
             Ok("line\nSecond line\nThird".to_string())
         );
     }
@@ -634,7 +862,7 @@ mod tests {
     fn test_get_text_entire_line() {
         let buffer = new_test_buffer_get();
         assert_eq!(
-            buffer.get_text(&LineCol{line: 1, col: 0}, &LineCol{line: 2, col: 0}),
+            buffer.get_text(&LineCol { line: 1, col: 0 }, &LineCol { line: 2, col: 0 }),
             Ok("Second line\n".to_string())
         );
     }
@@ -643,7 +871,7 @@ mod tests {
     fn test_get_text_across_all_lines() {
         let buffer = new_test_buffer_get();
         assert_eq!(
-            buffer.get_text(&LineCol{line: 0, col: 0}, &LineCol{line: 3, col: 11}),
+            buffer.get_text(&LineCol { line: 0, col: 0 }, &LineCol { line: 3, col: 11 }),
             Ok("First line\nSecond line\nThird line\nFourth line".to_string())
         );
     }
@@ -652,7 +880,7 @@ mod tests {
     fn test_get_text_invalid_range_start_exceeds_end() {
         let buffer = new_test_buffer_get();
         assert_eq!(
-            buffer.get_text(&LineCol{line: 2, col: 0}, &LineCol{line: 1, col: 0}),
+            buffer.get_text(&LineCol { line: 2, col: 0 }, &LineCol { line: 1, col: 0 }),
             Err(BufferError::InvalidRange)
         );
     }
@@ -661,7 +889,7 @@ mod tests {
     fn test_get_text_invalid_range_exceeds_file_length() {
         let buffer = new_test_buffer_get();
         assert_eq!(
-            buffer.get_text(&LineCol{line: 0, col: 0}, &LineCol{line: 4, col: 0}),
+            buffer.get_text(&LineCol { line: 0, col: 0 }, &LineCol { line: 4, col: 0 }),
             Err(BufferError::InvalidRange)
         );
     }
@@ -669,21 +897,164 @@ mod tests {
     #[test]
     fn test_get_text_empty_range() {
         let buffer = new_test_buffer_get();
-        assert_eq!(buffer.get_text(&LineCol{line: 1, col: 5}, &LineCol{line: 1, col: 5}), Ok("".to_string()));
+        assert_eq!(
+            buffer.get_text(&LineCol { line: 1, col: 5 }, &LineCol { line: 1, col: 5 }),
+            Ok("".to_string())
+        );
     }
 
     #[test]
     fn test_get_text_buffer_exceeded() {
         let buffer = new_test_buffer_get();
-        assert_eq!(buffer.get_text(&LineCol{line: 0, col: 0}, &LineCol{line: 0, col: 11}), Err(BufferError::InvalidRange));
+        assert_eq!(
+            buffer.get_text(&LineCol { line: 0, col: 0 }, &LineCol { line: 0, col: 11 }),
+            Err(BufferError::InvalidRange)
+        );
     }
 
     #[test]
     fn test_get_text_newline_handling() {
         let buffer = new_test_buffer_get();
         assert_eq!(
-            buffer.get_text(&LineCol{line: 0, col: 9}, &LineCol{line: 1, col: 1}),
+            buffer.get_text(&LineCol { line: 0, col: 9 }, &LineCol { line: 1, col: 1 }),
             Ok("e\nS".to_string())
         );
+    }
+
+    #[test]
+    fn test_delete_within_line() {
+        let mut buffer = new_test_buffer_get();
+        buffer
+            .delete(&LineCol { line: 0, col: 6 }, &LineCol { line: 0, col: 10 })
+            .unwrap();
+        assert_eq!(buffer.lines[0], "First ");
+    }
+
+    #[test]
+    fn test_delete_to_end_of_line() {
+        let mut buffer = new_test_buffer_get();
+        buffer
+            .delete(&LineCol { line: 0, col: 6 }, &LineCol { line: 0, col: 11 })
+            .unwrap();
+        assert_eq!(buffer.lines[0], "First ");
+    }
+
+    #[test]
+    fn test_delete_entire_line() {
+        let mut buffer = new_test_buffer_get();
+        buffer
+            .delete(&LineCol { line: 1, col: 0 }, &LineCol { line: 1, col: 11 })
+            .unwrap();
+        assert_eq!(buffer.lines.len(), 3);
+        assert_eq!(buffer.lines[1], "Third line");
+    }
+
+    #[test]
+    fn test_delete_across_lines() {
+        let mut buffer = new_test_buffer_get();
+        buffer
+            .delete(&LineCol { line: 0, col: 6 }, &LineCol { line: 2, col: 6 })
+            .unwrap();
+        assert_eq!(buffer.lines.len(), 2);
+        assert_eq!(buffer.lines[0], "First line");
+    }
+
+    #[test]
+    fn test_delete_multiple_full_lines() {
+        let mut buffer = new_test_buffer_get();
+        buffer
+            .delete(&LineCol { line: 1, col: 0 }, &LineCol { line: 2, col: 10 })
+            .unwrap();
+        assert_eq!(buffer.lines.len(), 2);
+        assert_eq!(buffer.lines[1], "Fourth line");
+    }
+
+    #[test]
+    fn test_delete_invalid_range() {
+        let mut buffer = new_test_buffer_get();
+        let result = buffer.delete(&LineCol { line: 2, col: 0 }, &LineCol { line: 1, col: 0 });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_delete_out_of_bounds() {
+        let mut buffer = new_test_buffer_get();
+        let result = buffer.delete(&LineCol { line: 0, col: 0 }, &LineCol { line: 4, col: 0 });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_delete_empty_range() {
+        let mut buffer = new_test_buffer_get();
+        let result = buffer.delete(&LineCol { line: 1, col: 5 }, &LineCol { line: 1, col: 5 });
+        assert_eq!(result, Err(BufferError::InvalidRange));
+    }
+  #[test]
+    fn test_insert_single_line_not_newline() {
+        let mut buffer = new_test_buffer();
+        buffer.insert(&LineCol { line: 0, col: 5 }, "inserted ".to_string(), false).unwrap();
+        assert_eq!(buffer.lines[0], "Firstinserted  line");
+    }
+
+    #[test]
+    fn test_insert_multi_line_not_newline() {
+        let mut buffer = new_test_buffer();
+        buffer.insert(&LineCol { line: 0, col: 5 }, "inserted\ntext".to_string(), false).unwrap();
+        assert_eq!(buffer.lines[0], "Firstinserted");
+        assert_eq!(buffer.lines[1], "text line");
+    }
+
+    #[test]
+    fn test_insert_single_line_newline() {
+        let mut buffer = new_test_buffer();
+        buffer.insert(&LineCol { line: 1, col: 0 }, "New line".to_string(), true).unwrap();
+        assert_eq!(buffer.lines[1], "New line");
+        assert_eq!(buffer.lines[2], "Second line");
+    }
+
+    #[test]
+    fn test_insert_multi_line_newline() {
+        let mut buffer = new_test_buffer();
+        buffer.insert(&LineCol { line: 1, col: 0 }, "New\nlines".to_string(), true).unwrap();
+        assert_eq!(buffer.lines[1], "New");
+        assert_eq!(buffer.lines[2], "lines");
+        assert_eq!(buffer.lines[3], "Second line");
+    }
+
+    #[test]
+    fn test_insert_at_end_of_line() {
+        let mut buffer = new_test_buffer();
+        buffer.insert(&LineCol { line: 0, col: 10 }, " added".to_string(), false).unwrap();
+        assert_eq!(buffer.lines[0], "First line added");
+    }
+
+    #[test]
+    fn test_insert_empty_string() {
+        let mut buffer = new_test_buffer();
+        buffer.insert(&LineCol { line: 0, col: 5 }, "".to_string(), false).unwrap();
+        assert_eq!(buffer.lines[0], "First line");
+    }
+
+    #[test]
+    fn test_insert_invalid_position() {
+        let mut buffer = new_test_buffer();
+        let result = buffer.insert(&LineCol { line: 3, col: 0 }, "Invalid".to_string(), false);
+        assert!(matches!(result, Err(BufferError::InvalidPosition)));
+    }
+
+    #[test]
+    fn test_insert_at_start_of_buffer() {
+        let mut buffer = new_test_buffer();
+        buffer.insert(&LineCol { line: 0, col: 0 }, "Start: ".to_string(), false).unwrap();
+        assert_eq!(buffer.lines[0], "Start: First line");
+    }
+
+    #[test]
+    fn test_insert_newline_at_end_of_buffer() {
+        let mut buffer = new_test_buffer();
+        let last_line = buffer.lines.len() - 1;
+        let last_col = buffer.lines[last_line].len();
+        buffer.insert(&LineCol { line: last_line, col: last_col }, "New last line".to_string(), true).unwrap();
+        assert_eq!(buffer.lines.last().unwrap(), "New last line");
     }
 }
