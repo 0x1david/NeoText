@@ -1,7 +1,7 @@
 use crate::modal::Modal;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LineCol(pub usize, pub usize);
+pub struct LineCol{pub line: usize, pub col: usize}
 /// The overarching cursor struct
 pub struct Cursor {
     pub pos: LineCol,
@@ -14,8 +14,8 @@ pub struct Cursor {
 impl Default for Cursor {
     fn default() -> Self {
         Cursor {
-            pos: LineCol(0, 0),
-            pos_initial: LineCol(0, 0),
+            pos: LineCol{line: 0, col: 0},
+            pos_initial: LineCol{line: 0, col: 0},
             col_max: 0,
             line_max: 0,
             plane: CursorPlane::Text,
@@ -26,22 +26,22 @@ impl Default for Cursor {
 impl Cursor {
     #[inline]
     pub fn line(&self) -> usize {
-        self.pos.0
+        self.pos.line
     }
 
     #[inline]
     pub fn set_line(&mut self, new: usize) {
-        self.pos.0 = new
+        self.pos.line = new
     }
 
     #[inline]
     pub fn col(&self) -> usize {
-        self.pos.1
+        self.pos.col
     }
 
     #[inline]
     pub fn set_col(&mut self, new: usize) {
-        self.pos.1 = new
+        self.pos.col = new
     }
     /// Moves the cursor one position to the left, if there's left to go to, otherwise remains in
     /// place.
@@ -110,7 +110,7 @@ impl Cursor {
             Modal::Command => self.plane = CursorPlane::CommandBar,
             _ => self.plane = CursorPlane::Text,
         }
-        self.pos_initial = LineCol(self.line(), self.col());
+        self.pos_initial = LineCol{line: self.line(), col: self.col()};
     }
 }
 
@@ -129,8 +129,8 @@ mod tests {
     fn test_cursor_movements() {
         // Initialize cursor with a 10x10 grid
         let mut cursor = Cursor {
-            pos: LineCol(5, 5),
-            pos_initial: LineCol(5, 5),
+            pos: LineCol{line: 5, col: 5},
+            pos_initial: LineCol{line: 5, col: 5},
             col_max: 9,
             line_max: 9,
             plane: CursorPlane::Text,
