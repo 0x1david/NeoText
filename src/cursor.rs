@@ -1,5 +1,6 @@
 use crate::modal::Modal;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LineCol(pub usize, pub usize);
 /// The overarching cursor struct
 pub struct Cursor {
@@ -7,7 +8,7 @@ pub struct Cursor {
     pos_initial: LineCol,
     col_max: usize,
     line_max: usize,
-    plane: CursorPlane
+    plane: CursorPlane,
 }
 
 impl Default for Cursor {
@@ -17,7 +18,7 @@ impl Default for Cursor {
             pos_initial: LineCol(0, 0),
             col_max: 0,
             line_max: 0,
-            plane: CursorPlane::Text
+            plane: CursorPlane::Text,
         }
     }
 }
@@ -54,7 +55,7 @@ impl Cursor {
     /// place.
     #[inline]
     pub fn bump_right(&mut self) {
-        if self.col() != self.col_max  {
+        if self.col() != self.col_max {
             self.set_col(self.col() + 1);
         }
     }
@@ -103,7 +104,6 @@ impl Cursor {
         self.set_line(self.line_max.min(self.line() + dist));
     }
 
-
     /// Updates the location the cursor points at depending on the current active modal state.
     pub fn mod_change(&mut self, modal: &Modal) {
         match modal {
@@ -118,7 +118,7 @@ impl Cursor {
 enum CursorPlane {
     Text,
     CommandBar,
-    Terminal
+    Terminal,
 }
 
 #[cfg(test)]
@@ -133,7 +133,7 @@ mod tests {
             pos_initial: LineCol(5, 5),
             col_max: 9,
             line_max: 9,
-            plane: CursorPlane::Text
+            plane: CursorPlane::Text,
         };
 
         // Test bump movements
@@ -154,16 +154,24 @@ mod tests {
         assert_eq!(cursor.line(), 5);
 
         // Test bump at edges
-        for _ in 0..10 { cursor.bump_left(); }
+        for _ in 0..10 {
+            cursor.bump_left();
+        }
         assert_eq!(cursor.col(), 0);
 
-        for _ in 0..10 { cursor.bump_right(); }
+        for _ in 0..10 {
+            cursor.bump_right();
+        }
         assert_eq!(cursor.col(), 9);
 
-        for _ in 0..10 { cursor.bump_up(); }
+        for _ in 0..10 {
+            cursor.bump_up();
+        }
         assert_eq!(cursor.line(), 0);
 
-        for _ in 0..10 { cursor.bump_down(); }
+        for _ in 0..10 {
+            cursor.bump_down();
+        }
         assert_eq!(cursor.line(), 9);
 
         // Reset cursor position

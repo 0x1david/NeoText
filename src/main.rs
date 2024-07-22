@@ -1,19 +1,15 @@
-use std::io::stdout;
+use anyhow::{Context, Result};
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
     terminal::{self, ClearType},
 };
-use anyhow::{Context, Result};
+use std::io::stdout;
+mod buffer;
 mod cursor;
 mod modal;
-mod buffer;
-use cursor::Cursor;
 use buffer::TextBuffer;
-
-
-
-
+use cursor::Cursor;
 
 /// The main editor is used as the main API for all commands
 struct MainEditor<Buff: TextBuffer> {
