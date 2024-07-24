@@ -3,11 +3,17 @@ use std::{collections::VecDeque, ops::Range};
 
 /// Trait defining the interface for a text buffer
 pub trait TextBuffer {
+    /// Insert a single symbol at specified position
+    fn insert(&mut self, at: LineCol, insertable: char) -> Result<LineCol, BufferError>;
+
     /// Insert text at the specified position
-    fn insert(&mut self, at: LineCol, text: String, newline: bool) -> Result<LineCol, BufferError>;
+    fn insert_text(&mut self, at: LineCol, text: String, newline: bool) -> Result<LineCol, BufferError>;
 
     /// Delete text in the specified range
-    fn delete(&mut self, from: LineCol, to: LineCol) -> Result<LineCol, BufferError>;
+    fn delete_selection(&mut self, from: LineCol, to: LineCol) -> Result<LineCol, BufferError>;
+
+    /// Delete the symbol at the specified position
+    fn delete(&mut self, at: LineCol) -> Result<LineCol, BufferError>;
 
     /// Replace text in the specified range with new text
     fn replace(&mut self, from: LineCol, to: LineCol, text: &str) -> Result<(), BufferError>;
@@ -40,6 +46,9 @@ pub trait TextBuffer {
 
     /// Redo the last undone operation
     fn redo(&mut self, at: LineCol) -> Result<LineCol, BufferError>;
+
+    /// Redo the last undone operation
+    fn get_entire_text(&self) -> &Vec<String>;
 }
 
 /// Error type for buffer operations
@@ -92,7 +101,7 @@ impl Stack {
 
 /// Stores content and cursor location at a point in time of the editing process.
 #[derive(Debug, Default)]
-struct StateCapsule {
+pub struct StateCapsule {
     content: Vec<String>,
     loc: LineCol
 }
@@ -110,6 +119,14 @@ pub struct VecBuffer {
 }
 
 impl TextBuffer for VecBuffer {
+    fn insert(&mut self, mut at: LineCol, ch: char) -> Result<LineCol, BufferError> {
+        if at.line >= self.lines.len() || at.col > self.lines[at.line].len() {
+            return Err(BufferError::InvalidPosition);
+        }
+        self.lines[at.line].insert(at.col, ch);
+        at.col+=1;
+        Ok(at)
+    }
     /// Performs a redo operation, moving the current state to the next future state if available.
     /// Returns an error if there are no `future` states to redo to.
     fn redo(&mut self, at: LineCol) -> Result<LineCol, BufferError> {
@@ -120,7 +137,7 @@ impl TextBuffer for VecBuffer {
                 self.past.push(StateCapsule {content: current_state, loc: at});
                 future_state.loc
             })
-            .map_or_else(|| Err(BufferError::NowhereToGo), |loc| Ok(loc))
+            .map_or_else(|| Err(BufferError::NowhereToGo), Ok)
     }
 
     /// Performs an undo operation, moving the current state to the previous past state if available.
@@ -133,7 +150,7 @@ impl TextBuffer for VecBuffer {
                 self.future.push(StateCapsule {content: current_state, loc: at});
                 past_state.loc
             })
-            .map_or_else(|| Err(BufferError::NowhereToGo), |loc| Ok(loc))
+            .map_or_else(|| Err(BufferError::NowhereToGo), Ok)
     }
 
     /// Searches for a query string in the buffer, starting from a given position.
@@ -412,7 +429,7 @@ impl TextBuffer for VecBuffer {
     /// This function may change the structure of the buffer by adding or modifying lines.
     /// It's the caller's responsibility to ensure that any existing references or indices
     /// into the buffer are updated appropriately after calling this function.
-    fn insert(&mut self, at: LineCol, text: String, newline: bool) -> Result<LineCol, BufferError> {
+    fn insert_text(&mut self, at: LineCol, text: String, newline: bool) -> Result<LineCol, BufferError> {
         if at.line >= self.lines.len() || at.col > self.lines[at.line].len() {
             return Err(BufferError::InvalidPosition);
         } else if text.is_empty() {
@@ -490,7 +507,7 @@ impl TextBuffer for VecBuffer {
     ///
     /// This function modifies the buffer's content. After calling this function,
     /// line numbers and column positions after the deleted range may change.
-    fn delete(&mut self, from: LineCol, to: LineCol) -> Result<LineCol, BufferError> {
+    fn delete_selection(&mut self, from: LineCol, to: LineCol) -> Result<LineCol, BufferError> {
         if from.line >= self.lines.len()
             || to.line >= self.lines.len()
             || (from.line == to.line && from.col > to.col)
@@ -502,7 +519,7 @@ impl TextBuffer for VecBuffer {
 
         if from.col == 0 && to.col >= self.lines[to.line].len() {
             self.lines.drain(from.line..=to.line);
-            return Ok(());
+            return Ok(LineCol {col: to.col, line: from.line});
         }
 
         if from.line == to.line {
@@ -520,10 +537,23 @@ impl TextBuffer for VecBuffer {
             self.lines[from.line].push_str(&new_last_line);
             self.lines.drain(from.line + 1..=to.line);
         }
-        Ok(())
+        Ok(LineCol {col: to.col, line: from.line})
     }
     fn is_empty(&self) -> bool {
         self.lines.is_empty()
+    }
+    fn get_entire_text(&self) -> &Vec<String>{
+        &self.lines
+    }
+
+    #[inline]
+    fn delete(&mut self, mut at: LineCol) -> Result<LineCol, BufferError> {
+        if at.line >= self.lines.len() || at.col > self.lines[at.line].len() {
+            return Err(BufferError::InvalidPosition);
+        }
+        self.lines[at.line].remove(at.col-1);
+        at.col-=1;
+        Ok(at)
     }
 }
 #[cfg(test)]
@@ -942,7 +972,7 @@ mod tests {
     fn test_delete_within_line() {
         let mut buffer = new_test_buffer_get();
         buffer
-            .delete(LineCol { line: 0, col: 6 }, LineCol { line: 0, col: 10 })
+            .delete_selection(LineCol { line: 0, col: 6 }, LineCol { line: 0, col: 10 })
             .unwrap();
         assert_eq!(buffer.lines[0], "First ");
     }
@@ -951,7 +981,7 @@ mod tests {
     fn test_delete_to_end_of_line() {
         let mut buffer = new_test_buffer_get();
         buffer
-            .delete(LineCol { line: 0, col: 6 }, LineCol { line: 0, col: 11 })
+            .delete_selection(LineCol { line: 0, col: 6 }, LineCol { line: 0, col: 11 })
             .unwrap();
         assert_eq!(buffer.lines[0], "First ");
     }
@@ -960,7 +990,7 @@ mod tests {
     fn test_delete_entire_line() {
         let mut buffer = new_test_buffer_get();
         buffer
-            .delete(LineCol { line: 1, col: 0 }, LineCol { line: 1, col: 11 })
+            .delete_selection(LineCol { line: 1, col: 0 }, LineCol { line: 1, col: 11 })
             .unwrap();
         assert_eq!(buffer.lines.len(), 3);
         assert_eq!(buffer.lines[1], "Third line");
@@ -970,7 +1000,7 @@ mod tests {
     fn test_delete_across_lines() {
         let mut buffer = new_test_buffer_get();
         buffer
-            .delete(LineCol { line: 0, col: 6 }, LineCol { line: 2, col: 6 })
+            .delete_selection(LineCol { line: 0, col: 6 }, LineCol { line: 2, col: 6 })
             .unwrap();
         assert_eq!(buffer.lines.len(), 2);
         assert_eq!(buffer.lines[0], "First line");
@@ -980,7 +1010,7 @@ mod tests {
     fn test_delete_multiple_full_lines() {
         let mut buffer = new_test_buffer_get();
         buffer
-            .delete(LineCol { line: 1, col: 0 }, LineCol { line: 2, col: 10 })
+            .delete_selection(LineCol { line: 1, col: 0 }, LineCol { line: 2, col: 10 })
             .unwrap();
         assert_eq!(buffer.lines.len(), 2);
         assert_eq!(buffer.lines[1], "Fourth line");
@@ -989,28 +1019,28 @@ mod tests {
     #[test]
     fn test_delete_invalid_range() {
         let mut buffer = new_test_buffer_get();
-        let result = buffer.delete(LineCol { line: 2, col: 0 }, LineCol { line: 1, col: 0 });
+        let result = buffer.delete_selection(LineCol { line: 2, col: 0 }, LineCol { line: 1, col: 0 });
         assert!(result.is_err());
     }
 
     #[test]
     fn test_delete_out_of_bounds() {
         let mut buffer = new_test_buffer_get();
-        let result = buffer.delete(LineCol { line: 0, col: 0 }, LineCol { line: 4, col: 0 });
+        let result = buffer.delete_selection(LineCol { line: 0, col: 0 }, LineCol { line: 4, col: 0 });
         assert!(result.is_err());
     }
 
     #[test]
     fn test_delete_empty_range() {
         let mut buffer = new_test_buffer_get();
-        let result = buffer.delete(LineCol { line: 1, col: 5 }, LineCol { line: 1, col: 5 });
+        let result = buffer.delete_selection(LineCol { line: 1, col: 5 }, LineCol { line: 1, col: 5 });
         assert_eq!(result, Err(BufferError::InvalidRange));
     }
     #[test]
     fn test_insert_single_line_not_newline() {
         let mut buffer = new_test_buffer();
         buffer
-            .insert(LineCol { line: 0, col: 5 }, "inserted ".to_string(), false)
+            .insert_text(LineCol { line: 0, col: 5 }, "inserted ".to_string(), false)
             .unwrap();
         assert_eq!(buffer.lines[0], "Firstinserted  line");
     }
@@ -1019,7 +1049,7 @@ mod tests {
     fn test_insert_multi_line_not_newline() {
         let mut buffer = new_test_buffer();
         buffer
-            .insert(
+            .insert_text(
                 LineCol { line: 0, col: 5 },
                 "inserted\ntext".to_string(),
                 false,
@@ -1033,7 +1063,7 @@ mod tests {
     fn test_insert_single_line_newline() {
         let mut buffer = new_test_buffer();
         buffer
-            .insert(LineCol { line: 1, col: 0 }, "New line".to_string(), true)
+            .insert_text(LineCol { line: 1, col: 0 }, "New line".to_string(), true)
             .unwrap();
         assert_eq!(buffer.lines[1], "Second line");
         assert_eq!(buffer.lines[2], "New line");
@@ -1044,7 +1074,7 @@ mod tests {
     fn test_insert_multi_line_newline() {
         let mut buffer = new_test_buffer();
         buffer
-            .insert(LineCol { line: 1, col: 0 }, "New\nlines".to_string(), true)
+            .insert_text(LineCol { line: 1, col: 0 }, "New\nlines".to_string(), true)
             .unwrap();
         assert_eq!(buffer.lines[1], "Second line");
         assert_eq!(buffer.lines[2], "New");
@@ -1056,7 +1086,7 @@ mod tests {
     fn test_insert_at_end_of_line() {
         let mut buffer = new_test_buffer();
         buffer
-            .insert(LineCol { line: 0, col: 10 }, " added".to_string(), false)
+            .insert_text(LineCol { line: 0, col: 10 }, " added".to_string(), false)
             .unwrap();
         assert_eq!(buffer.lines[0], "First line added");
     }
@@ -1064,14 +1094,14 @@ mod tests {
     #[test]
     fn test_insert_empty_string() {
         let mut buffer = new_test_buffer();
-        let result = buffer.insert(LineCol { line: 0, col: 5 }, "".to_string(), false);
+        let result = buffer.insert_text(LineCol { line: 0, col: 5 }, "".to_string(), false);
         assert_eq!(result, Err(BufferError::InvalidInput));
     }
 
     #[test]
     fn test_insert_invalid_position() {
         let mut buffer = new_test_buffer();
-        let result = buffer.insert(LineCol { line: 3, col: 0 }, "Invalid".to_string(), false);
+        let result = buffer.insert_text(LineCol { line: 3, col: 0 }, "Invalid".to_string(), false);
         assert_eq!(result, Err(BufferError::InvalidPosition));
     }
 
@@ -1079,7 +1109,7 @@ mod tests {
     fn test_insert_at_start_of_buffer() {
         let mut buffer = new_test_buffer();
         buffer
-            .insert(LineCol { line: 0, col: 0 }, "Start: ".to_string(), false)
+            .insert_text(LineCol { line: 0, col: 0 }, "Start: ".to_string(), false)
             .unwrap();
         assert_eq!(buffer.lines[0], "Start: First line");
     }
@@ -1088,7 +1118,7 @@ mod tests {
     fn test_insert_newline_at_end_of_buffer() {
         let mut buffer = new_test_buffer();
         buffer
-            .insert(
+            .insert_text(
                 LineCol {
                     line: 2,
                     col: 0,
