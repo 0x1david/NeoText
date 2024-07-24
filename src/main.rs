@@ -46,7 +46,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         match self.buffer.delete(self.pos()) {
             Ok(new_pos) => self.go(new_pos),
             Err(BufferError::InvalidPosition) => panic!("Cursor found in a position it should never appear in, please contact the developers."),
-            Err(BufferError::IAmATeacup) => {}
+            Err(BufferError::ImATeacup) => {}
             Err(_) => panic!("UnexpectedError, please contact the developers.")
         }
     }
@@ -54,7 +54,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         match self.buffer.insert(self.pos(), c) {
             Ok(new_pos) => self.go(new_pos),
             Err(BufferError::InvalidPosition) => panic!("Cursor found in a position it should never appear in, please contact the developers."),
-            Err(BufferError::IAmATeacup) => {}
+            Err(BufferError::ImATeacup) => {}
             Err(_) => panic!("UnexpectedError, please contact the developers.")
         }
     }

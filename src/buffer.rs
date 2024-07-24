@@ -67,7 +67,7 @@ pub enum BufferError {
     InvalidInput,
     PatternNotFound,
     NowhereToGo,
-    IAmATeacup
+    ImATeacup,
 }
 
 /// A stack implementation using a VecDeque as the underlying storage.
@@ -137,8 +137,8 @@ impl Default for VecBuffer {
 
 impl TextBuffer for VecBuffer {
     fn insert_newline(&mut self, mut at: LineCol) -> LineCol {
-        self.lines.insert(at.line+1, Default::default());
-        at.line+=1;
+        self.lines.insert(at.line + 1, Default::default());
+        at.line += 1;
         at.col = 0;
         at
     }
@@ -603,7 +603,7 @@ impl TextBuffer for VecBuffer {
         }
         if at.col == 0 {
             if at.line == 0 {
-                return Err(BufferError::IAmATeacup)
+                return Err(BufferError::ImATeacup);
             }
 
             let line_content = self.lines.remove(at.line);
