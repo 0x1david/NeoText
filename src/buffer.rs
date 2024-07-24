@@ -3,11 +3,17 @@ use std::{collections::VecDeque, ops::Range};
 
 /// Trait defining the interface for a text buffer
 pub trait TextBuffer {
+    fn bounds(&self) -> LineCol;
     /// Insert a single symbol at specified position
     fn insert(&mut self, at: LineCol, insertable: char) -> Result<LineCol, BufferError>;
 
     /// Insert text at the specified position
-    fn insert_text(&mut self, at: LineCol, text: String, newline: bool) -> Result<LineCol, BufferError>;
+    fn insert_text(
+        &mut self,
+        at: LineCol,
+        text: String,
+        newline: bool,
+    ) -> Result<LineCol, BufferError>;
 
     /// Delete text in the specified range
     fn delete_selection(&mut self, from: LineCol, to: LineCol) -> Result<LineCol, BufferError>;
@@ -102,7 +108,7 @@ impl Stack {
 #[derive(Debug, Default)]
 pub struct StateCapsule {
     content: Vec<String>,
-    loc: LineCol
+    loc: LineCol,
 }
 
 /// A buffer implementation for storing text as a vector of lines,
@@ -122,18 +128,28 @@ impl Default for VecBuffer {
         Self {
             lines: vec!["".to_string()],
             past: Stack::default(),
-            future: Stack::default()
+            future: Stack::default(),
         }
     }
 }
 
 impl TextBuffer for VecBuffer {
+    fn bounds(&self) -> LineCol {
+        LineCol {
+            line: self.line_count() - 1,
+            col: self
+                .lines
+                .last()
+                .expect("There should never be no lines at all.")
+                .len(),
+        }
+    }
     fn insert(&mut self, mut at: LineCol, ch: char) -> Result<LineCol, BufferError> {
         if at.line > self.lines.len() || at.col > self.lines[at.line].len() {
             return Err(BufferError::InvalidPosition);
         }
         self.lines[at.line].insert(at.col, ch);
-        at.col+=1;
+        at.col += 1;
         Ok(at)
     }
     /// Performs a redo operation, moving the current state to the next future state if available.
@@ -143,7 +159,10 @@ impl TextBuffer for VecBuffer {
             .pop()
             .map(|future_state| {
                 let current_state = std::mem::replace(&mut self.lines, future_state.content);
-                self.past.push(StateCapsule {content: current_state, loc: at});
+                self.past.push(StateCapsule {
+                    content: current_state,
+                    loc: at,
+                });
                 future_state.loc
             })
             .map_or_else(|| Err(BufferError::NowhereToGo), Ok)
@@ -156,7 +175,10 @@ impl TextBuffer for VecBuffer {
             .pop()
             .map(|past_state| {
                 let current_state = std::mem::replace(&mut self.lines, past_state.content);
-                self.future.push(StateCapsule {content: current_state, loc: at});
+                self.future.push(StateCapsule {
+                    content: current_state,
+                    loc: at,
+                });
                 past_state.loc
             })
             .map_or_else(|| Err(BufferError::NowhereToGo), Ok)
@@ -438,11 +460,16 @@ impl TextBuffer for VecBuffer {
     /// This function may change the structure of the buffer by adding or modifying lines.
     /// It's the caller's responsibility to ensure that any existing references or indices
     /// into the buffer are updated appropriately after calling this function.
-    fn insert_text(&mut self, at: LineCol, text: String, newline: bool) -> Result<LineCol, BufferError> {
+    fn insert_text(
+        &mut self,
+        at: LineCol,
+        text: String,
+        newline: bool,
+    ) -> Result<LineCol, BufferError> {
         if at.line >= self.lines.len() || at.col > self.lines[at.line].len() {
             return Err(BufferError::InvalidPosition);
         } else if text.is_empty() {
-            return Err(BufferError::InvalidInput)
+            return Err(BufferError::InvalidInput);
         }
         let mut resulting_cursor_pos = at;
 
@@ -528,7 +555,10 @@ impl TextBuffer for VecBuffer {
 
         if from.col == 0 && to.col >= self.lines[to.line].len() {
             self.lines.drain(from.line..=to.line);
-            return Ok(LineCol {col: to.col, line: from.line});
+            return Ok(LineCol {
+                col: to.col,
+                line: from.line,
+            });
         }
 
         if from.line == to.line {
@@ -546,12 +576,15 @@ impl TextBuffer for VecBuffer {
             self.lines[from.line].push_str(&new_last_line);
             self.lines.drain(from.line + 1..=to.line);
         }
-        Ok(LineCol {col: to.col, line: from.line})
+        Ok(LineCol {
+            col: to.col,
+            line: from.line,
+        })
     }
     fn is_empty(&self) -> bool {
         self.lines.is_empty()
     }
-    fn get_entire_text(&self) -> &Vec<String>{
+    fn get_entire_text(&self) -> &Vec<String> {
         &self.lines
     }
 
@@ -560,8 +593,8 @@ impl TextBuffer for VecBuffer {
         if at.line >= self.lines.len() || at.col > self.lines[at.line].len() {
             return Err(BufferError::InvalidPosition);
         }
-        self.lines[at.line].remove(at.col-1);
-        at.col-=1;
+        self.lines[at.line].remove(at.col - 1);
+        at.col -= 1;
         Ok(at)
     }
 }
@@ -1028,21 +1061,24 @@ mod tests {
     #[test]
     fn test_delete_invalid_range() {
         let mut buffer = new_test_buffer_get();
-        let result = buffer.delete_selection(LineCol { line: 2, col: 0 }, LineCol { line: 1, col: 0 });
+        let result =
+            buffer.delete_selection(LineCol { line: 2, col: 0 }, LineCol { line: 1, col: 0 });
         assert!(result.is_err());
     }
 
     #[test]
     fn test_delete_out_of_bounds() {
         let mut buffer = new_test_buffer_get();
-        let result = buffer.delete_selection(LineCol { line: 0, col: 0 }, LineCol { line: 4, col: 0 });
+        let result =
+            buffer.delete_selection(LineCol { line: 0, col: 0 }, LineCol { line: 4, col: 0 });
         assert!(result.is_err());
     }
 
     #[test]
     fn test_delete_empty_range() {
         let mut buffer = new_test_buffer_get();
-        let result = buffer.delete_selection(LineCol { line: 1, col: 5 }, LineCol { line: 1, col: 5 });
+        let result =
+            buffer.delete_selection(LineCol { line: 1, col: 5 }, LineCol { line: 1, col: 5 });
         assert_eq!(result, Err(BufferError::InvalidRange));
     }
     #[test]
@@ -1128,10 +1164,7 @@ mod tests {
         let mut buffer = new_test_buffer();
         buffer
             .insert_text(
-                LineCol {
-                    line: 2,
-                    col: 0,
-                },
+                LineCol { line: 2, col: 0 },
                 "New last line".to_string(),
                 true,
             )

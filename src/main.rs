@@ -21,11 +21,26 @@ struct MainEditor<Buff: TextBuffer> {
 }
 
 impl<Buff: TextBuffer> MainEditor<Buff> {
+    fn if_within_bounds(&mut self, movement: fn(&mut Cursor)) {
+        let original_pos = self.pos();
+        movement(&mut self.cursor);
+        if self.pos() > self.buffer.bounds() {
+            self.cursor.pos = original_pos;
+        }
+    }
+
+    #[inline]
     fn pos(&self) -> LineCol {
         self.cursor.pos
     }
-    fn go(&mut self, to: LineCol){
-        self.cursor.go(to)
+
+    #[inline]
+    fn go(&mut self, to: LineCol) {
+        let original_pos = self.pos();
+        self.cursor.go(to);
+        if self.pos() > self.buffer.bounds() {
+            self.cursor.pos = original_pos;
+        }
     }
     fn delete(&mut self) {
         match self.buffer.delete(self.pos()) {
@@ -35,7 +50,6 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         }
     }
     fn insert(&mut self, c: char) {
-        println!("{:?}", self.cursor.pos);
         match self.buffer.insert(self.pos(), c) {
             Ok(new_pos) => self.go(new_pos),
             Err(BufferError::InvalidPosition) => panic!("Cursor found in a position it should never appear in, please contact the developers."),
@@ -55,8 +69,8 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
 
     fn run(&mut self) -> Result<()> {
         terminal::enable_raw_mode()?;
-        let mut stdout = stdout();
-        execute!(stdout, terminal::Clear(ClearType::All))?;
+        // let stdout = stdout();
+        // execute!(stdout, terminal::Clear(ClearType::All))?;
 
         loop {
             self.draw_rows()?;
@@ -67,28 +81,31 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                     KeyCode::Char(c) => self.insert(c),
                     // KeyCode::Enter => self.buffer.insert_text(self.pos()),
                     KeyCode::Backspace => self.delete(),
-                    KeyCode::Left => self.cursor.bump_left(),
-                    KeyCode::Right => self.cursor.bump_right(),
-                    KeyCode::Up => self.cursor.bump_up(),
-                    KeyCode::Down => self.cursor.bump_down(),
+                    KeyCode::Left => self.if_within_bounds(Cursor::bump_left),
+                    KeyCode::Right => self.if_within_bounds(Cursor::bump_right),
+                    KeyCode::Up => self.if_within_bounds(Cursor::bump_up),
+                    KeyCode::Down => self.if_within_bounds(Cursor::bump_down),
                     KeyCode::Esc => break,
                     _ => {}
                 }
             }
-        };
+        }
         Ok(())
     }
 
-
-//         terminal::disable_raw_mode()?;
-//         execute!(stdout, terminal::Clear(ClearType::All))?;
-//         Ok(())
-//     }
+    //         terminal::disable_raw_mode()?;
+    //         execute!(stdout, terminal::Clear(ClearType::All))?;
+    //         Ok(())
+    //     }
 
     fn draw_rows(&self) -> Result<()> {
         let mut stdout = stdout();
-        execute!(stdout, terminal::Clear(ClearType::All), crossterm::cursor::MoveTo(0, 0))?;
-        for line in self.buffer.get_entire_text(){
+        execute!(
+            stdout,
+            terminal::Clear(ClearType::All),
+            crossterm::cursor::MoveTo(0, 0)
+        )?;
+        for line in self.buffer.get_entire_text() {
             execute!(stdout, terminal::Clear(ClearType::CurrentLine))?;
             println!("{}\r", line);
         }
@@ -96,7 +113,11 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     }
 
     fn move_cursor(&self) -> Result<()> {
-        execute!(stdout(), crossterm::cursor::MoveTo(self.cursor.col() as u16 , self.cursor.line() as u16)).context("Failed moving cursor ")
+        execute!(
+            stdout(),
+            crossterm::cursor::MoveTo(self.cursor.col() as u16, self.cursor.line() as u16)
+        )
+        .context("Failed moving cursor ")
     }
 }
 

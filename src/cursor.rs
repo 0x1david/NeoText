@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{cmp::Ordering, fmt::Display};
 
 use crate::modal::Modal;
 
@@ -7,6 +7,16 @@ pub struct LineCol {
     pub line: usize,
     pub col: usize,
 }
+
+impl PartialOrd for LineCol {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.line.cmp(&other.line) {
+            Ordering::Equal => self.col.cmp(&other.col).into(),
+            otherwise => Some(otherwise),
+        }
+    }
+}
+
 /// The overarching cursor struct
 pub struct Cursor {
     pub pos: LineCol,
