@@ -57,7 +57,6 @@ pub enum BufferError {
     InvalidPosition,
     InvalidRange,
     InvalidLineNumber,
-    OperationFailed,
     InvalidInput,
     PatternNotFound,
     NowhereToGo,
@@ -108,7 +107,7 @@ pub struct StateCapsule {
 
 /// A buffer implementation for storing text as a vector of lines,
 /// with undo and redo functionality. Highly inefficient, both tim complexity wise and implementation wise. Simply a placeholder for testing.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct VecBuffer {
     /// The current state of the text, stored as a vector of lines.
     lines: Vec<String>,
@@ -118,9 +117,19 @@ pub struct VecBuffer {
     future: Stack,
 }
 
+impl Default for VecBuffer {
+    fn default() -> Self {
+        Self {
+            lines: vec!["".to_string()],
+            past: Stack::default(),
+            future: Stack::default()
+        }
+    }
+}
+
 impl TextBuffer for VecBuffer {
     fn insert(&mut self, mut at: LineCol, ch: char) -> Result<LineCol, BufferError> {
-        if at.line >= self.lines.len() || at.col > self.lines[at.line].len() {
+        if at.line > self.lines.len() || at.col > self.lines[at.line].len() {
             return Err(BufferError::InvalidPosition);
         }
         self.lines[at.line].insert(at.col, ch);

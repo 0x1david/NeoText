@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::modal::Modal;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -27,6 +29,11 @@ impl Default for Cursor {
 }
 
 impl Cursor {
+    #[inline]
+    pub fn go(&mut self, to: LineCol) {
+        self.pos = to;
+    }
+
     #[inline]
     pub fn line(&self) -> usize {
         self.pos.line

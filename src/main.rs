@@ -9,69 +9,96 @@ use std::io::stdout;
 mod buffer;
 mod cursor;
 mod modal;
-use buffer::{TextBuffer, VecBuffer};
-use cursor::Cursor;
+use buffer::{BufferError, TextBuffer, VecBuffer};
+use cursor::{Cursor, LineCol};
 
 /// The main editor is used as the main API for all commands
 struct MainEditor<Buff: TextBuffer> {
     /// In the first implementation I will start with Vec, for simplicity, fairly early to the dev
     /// process a better data structure will have to be found and vec replaced;
     cursor: Cursor,
-    content: Buff,
+    buffer: Buff,
+}
+
+impl<Buff: TextBuffer> MainEditor<Buff> {
+    fn pos(&self) -> LineCol {
+        self.cursor.pos
+    }
+    fn go(&mut self, to: LineCol){
+        self.cursor.go(to)
+    }
+    fn delete(&mut self) {
+        match self.buffer.delete(self.pos()) {
+            Ok(new_pos) => self.go(new_pos),
+            Err(BufferError::InvalidPosition) => panic!("Cursor found in a position it should never appear in, please contact the developers."),
+            Err(_) => panic!("UnexpectedError, please contact the developers.")
+        }
+    }
+    fn insert(&mut self, c: char) {
+        println!("{:?}", self.cursor.pos);
+        match self.buffer.insert(self.pos(), c) {
+            Ok(new_pos) => self.go(new_pos),
+            Err(BufferError::InvalidPosition) => panic!("Cursor found in a position it should never appear in, please contact the developers."),
+            Err(_) => panic!("UnexpectedError, please contact the developers.")
+        }
+    }
 }
 
 impl<Buff: TextBuffer> MainEditor<Buff> {
     fn new(buffer: Buff) -> Self {
         MainEditor {
-            content: buffer,
+            buffer,
             cursor: Cursor::default(),
             // mode: Modal::default(),
         }
     }
-}
 
-//     fn run(&mut self) -> Result<()> {
-//         terminal::enable_raw_mode()?;
-//         let mut stdout = stdout();
-//         execute!(stdout, terminal::Clear(ClearType::All))?;
+    fn run(&mut self) -> Result<()> {
+        terminal::enable_raw_mode()?;
+        let mut stdout = stdout();
+        execute!(stdout, terminal::Clear(ClearType::All))?;
 
-//         loop {
-//             self.draw_rows()?;
-//             self.move_cursor()?;
+        loop {
+            self.draw_rows()?;
+            self.move_cursor()?;
 
-//             if let Event::Key(key_event) = event::read()? {
-//                 match key_event.code {
-//                     KeyCode::Char(c) => self.insert_char(c),
-//                     KeyCode::Enter => self.insert_newline(),
-//                     KeyCode::Backspace => self.delete_char(),
-//                     KeyCode::Left => self.move_cursor_left(),
-//                     KeyCode::Right => self.move_cursor_right(),
-//                     KeyCode::Up => self.move_cursor_up(),
-//                     KeyCode::Down => self.move_cursor_down(),
-//                     KeyCode::Esc => break,
-//                     _ => {}
-//                 }
-//             }
-//         }
+            if let Event::Key(key_event) = event::read()? {
+                match key_event.code {
+                    KeyCode::Char(c) => self.insert(c),
+                    // KeyCode::Enter => self.buffer.insert_text(self.pos()),
+                    KeyCode::Backspace => self.delete(),
+                    KeyCode::Left => self.cursor.bump_left(),
+                    KeyCode::Right => self.cursor.bump_right(),
+                    KeyCode::Up => self.cursor.bump_up(),
+                    KeyCode::Down => self.cursor.bump_down(),
+                    KeyCode::Esc => break,
+                    _ => {}
+                }
+            }
+        };
+        Ok(())
+    }
+
 
 //         terminal::disable_raw_mode()?;
 //         execute!(stdout, terminal::Clear(ClearType::All))?;
 //         Ok(())
 //     }
 
-//     fn draw_rows(&self) -> Result<()> {
-//         let mut stdout = stdout();
-//         execute!(stdout, terminal::Clear(ClearType::All), crossterm::cursor::MoveTo(0, 0))?;
-//         for line in &self.content {
-//             execute!(stdout, terminal::Clear(ClearType::CurrentLine))?;
-//             println!("{}\r", line);
-//         }
-//         Ok(())
-//     }
+    fn draw_rows(&self) -> Result<()> {
+        let mut stdout = stdout();
+        execute!(stdout, terminal::Clear(ClearType::All), crossterm::cursor::MoveTo(0, 0))?;
+        for line in self.buffer.get_entire_text(){
+            execute!(stdout, terminal::Clear(ClearType::CurrentLine))?;
+            println!("{}\r", line);
+        }
+        Ok(())
+    }
 
-//     fn move_cursor(&self) -> Result<()> {
-//         execute!(stdout(), cursor::MoveTo(self.cursor_x as u16, self.cursor_y as u16)).context("Failed moving cursor ")
-//     }
+    fn move_cursor(&self) -> Result<()> {
+        execute!(stdout(), crossterm::cursor::MoveTo(self.cursor.col() as u16 , self.cursor.line() as u16)).context("Failed moving cursor ")
+    }
+}
 
 //     fn insert_char(&mut self, c: char) {
 //         let current_line = &mut self.content[self.cursor_y];
@@ -133,7 +160,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
 //     }
 // }
 
-// fn main() -> Result<()> {
-//     let mut editor = MainEditor::new(VecBuffer::default());
-//     // editor.run()
-// }
+fn main() -> Result<()> {
+    let mut editor = MainEditor::new(VecBuffer::default());
+    editor.run()
+}
