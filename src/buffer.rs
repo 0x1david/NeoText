@@ -3,6 +3,7 @@ use std::{collections::VecDeque, ops::Range};
 
 /// Trait defining the interface for a text buffer
 pub trait TextBuffer {
+    fn insert_newline(&mut self, at: LineCol) -> LineCol;
     fn bounds(&self) -> LineCol;
     /// Insert a single symbol at specified position
     fn insert(&mut self, at: LineCol, insertable: char) -> Result<LineCol, BufferError>;
@@ -66,6 +67,7 @@ pub enum BufferError {
     InvalidInput,
     PatternNotFound,
     NowhereToGo,
+    IAmATeacup
 }
 
 /// A stack implementation using a VecDeque as the underlying storage.
@@ -134,6 +136,12 @@ impl Default for VecBuffer {
 }
 
 impl TextBuffer for VecBuffer {
+    fn insert_newline(&mut self, mut at: LineCol) -> LineCol {
+        self.lines.insert(at.line+1, Default::default());
+        at.line+=1;
+        at.col = 0;
+        at
+    }
     fn bounds(&self) -> LineCol {
         LineCol {
             line: self.line_count() - 1,
@@ -593,8 +601,19 @@ impl TextBuffer for VecBuffer {
         if at.line >= self.lines.len() || at.col > self.lines[at.line].len() {
             return Err(BufferError::InvalidPosition);
         }
-        self.lines[at.line].remove(at.col - 1);
-        at.col -= 1;
+        if at.col == 0 {
+            if at.line == 0 {
+                return Err(BufferError::IAmATeacup)
+            }
+
+            let line_content = self.lines.remove(at.line);
+            at.line -= 1;
+            at.col = self.lines[at.line].len();
+            self.lines[at.line].push_str(&line_content);
+        } else {
+            self.lines[at.line].remove(at.col - 1);
+            at.col -= 1;
+        }
         Ok(at)
     }
 }

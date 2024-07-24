@@ -46,6 +46,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         match self.buffer.delete(self.pos()) {
             Ok(new_pos) => self.go(new_pos),
             Err(BufferError::InvalidPosition) => panic!("Cursor found in a position it should never appear in, please contact the developers."),
+            Err(BufferError::IAmATeacup) => {}
             Err(_) => panic!("UnexpectedError, please contact the developers.")
         }
     }
@@ -53,8 +54,12 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         match self.buffer.insert(self.pos(), c) {
             Ok(new_pos) => self.go(new_pos),
             Err(BufferError::InvalidPosition) => panic!("Cursor found in a position it should never appear in, please contact the developers."),
+            Err(BufferError::IAmATeacup) => {}
             Err(_) => panic!("UnexpectedError, please contact the developers.")
         }
+    }
+    fn newline(&mut self) {
+        self.cursor.pos = self.buffer.insert_newline(self.pos());
     }
 }
 
@@ -79,7 +84,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
             if let Event::Key(key_event) = event::read()? {
                 match key_event.code {
                     KeyCode::Char(c) => self.insert(c),
-                    // KeyCode::Enter => self.buffer.insert_text(self.pos()),
+                    KeyCode::Enter => self.newline(),
                     KeyCode::Backspace => self.delete(),
                     KeyCode::Left => self.if_within_bounds(Cursor::bump_left),
                     KeyCode::Right => self.if_within_bounds(Cursor::bump_right),
