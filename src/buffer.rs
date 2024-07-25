@@ -1,8 +1,9 @@
-use crate::cursor::{Cursor, LineCol};
+use crate::{cursor::{Cursor, LineCol}, modal::Modal};
 use std::{collections::VecDeque, ops::Range};
 
 /// Trait defining the interface for a text buffer
 pub trait TextBuffer {
+    fn set_plane(&mut self, modal: Modal) -> Result<(), BufferError>;
     fn insert_newline(&mut self, at: LineCol) -> LineCol;
     /// Insert a single symbol at specified position
     fn insert(&mut self, at: LineCol, insertable: char) -> Result<LineCol, BufferError>;
@@ -140,11 +141,14 @@ impl Default for VecBuffer {
 }
 
 impl TextBuffer for VecBuffer {
+    fn set_plane(&mut self, modal: Modal) -> Result<(), BufferError> {
+        unimplemented!()
+    }
     fn max_col(&self, at: LineCol) -> usize {
         self.lines[at.line].len()
     }
     fn max_line(&self) -> usize {
-        self.lines.len()
+        self.lines.len() - 1
     }
     fn insert_newline(&mut self, mut at: LineCol) -> LineCol {
         self.lines.insert(at.line + 1, Default::default());

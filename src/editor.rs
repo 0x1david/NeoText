@@ -1,19 +1,83 @@
-use crate::buffer::{BufferError, TextBuffer, VecBuffer};
+use crate::buffer::{BufferError, TextBuffer};
 use crate::cursor::{Cursor, LineCol};
-use anyhow::{Result, Context};
-use crossterm::style::{self, style, Color};
+use crate::modal::Modal;
+use anyhow::{Context, Result};
+use crossterm::style::{self, Color};
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
     terminal::{self, ClearType},
 };
 
-
-use crate::modal::Modal;
+// use crate::modal::Modal;
+use std::collections::VecDeque;
 use std::io::{stdout, Write};
+use std::process::exit;
+use std::sync::{Mutex, OnceLock};
 
-const INFO_BAR_Y_LOCATION: u16 = 1;
-const INFO_BAR_LINEWIDTH_INDICATOR: usize = 4;
+pub const INFO_BAR_Y_LOCATION: usize = 1;
+const NOTIFICATION_BAR_Y_LOCATION: usize = 0;
+const INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE: usize = 1;
+const INFO_BAR_MODAL_INDICATOR_X_LOCATION: usize = 1;
+const NOTIFICATION_BAR_TEXT_X_LOCATION: usize = 2;
+static DEBUG_MESSAGES: OnceLock<Mutex<VecDeque<String>>> = OnceLock::new();
+
+/// Retrieves or initializes the global debug message queue.
+///
+/// Returns a static reference to a `Mutex<VecDeque<String>>` which stores
+/// debug messages used by the `bar_dbg!` macro. Initializes the queue
+/// on first call.
+pub fn get_debug_messages() -> &'static Mutex<VecDeque<String>> {
+    DEBUG_MESSAGES.get_or_init(|| Mutex::new(VecDeque::new()))
+}
+
+/// A macro for debugging that logs expressions and their values to an info bar,
+/// similar to the standard `dbg!` macro.
+///
+/// This macro captures the file name and line number where it's invoked,
+/// evaluates the given expression(s), formats a debug message, and adds it
+/// to a global debug message queue. It then returns the value of the expression,
+/// allowing it to be used inline in code.
+///
+/// # Features
+/// - Logs the file name and line number of the macro invocation
+/// - Logs the expression as a string and its evaluated value
+/// - Can handle multiple expressions
+/// - Returns the value of the expression, allowing inline use
+/// - Maintains a queue of the last 10 debug messages
+///
+/// # Usage
+/// ```
+/// let x = bar_dbg!(5 + 3);  // Logs and returns 8
+/// let (a, b) = bar_dbg!(1, "two");  // Logs and returns (1, "two")
+/// ```
+///
+/// # Notes
+/// - The expression must implement the `Debug` trait for proper formatting
+/// - If the debug message queue exceeds 10 messages, the oldest message is removed
+///
+/// # Panics
+/// This macro will not panic, but it may fail silently if it cannot acquire
+/// the lock on the debug message queue.
+#[macro_export]
+macro_rules! bar_dbg{
+    ($val:expr) => {{
+        let file = file!();
+        let line = line!();
+        let val = $val;
+        let message = format!("[{}:{}] {} = {:?}", file, line, stringify!($val), &val);
+        if let Ok(mut messages) = get_debug_messages().lock() {
+            messages.push_back(message);
+            if messages.len() > 10 {
+                messages.pop_front();
+            }
+        }
+        val
+    }};
+    ($($val:expr),+ $(,)?) => {
+        ($(debug_info!($val)),+,)
+    };
+}
 
 /// The main editor is used as the main API for all commands
 pub struct MainEditor<Buff: TextBuffer> {
@@ -21,16 +85,29 @@ pub struct MainEditor<Buff: TextBuffer> {
     /// process a better data structure will have to be found and vec replaced;
     cursor: Cursor,
     buffer: Buff,
+    mode: Modal,
 }
 
 impl<Buff: TextBuffer> MainEditor<Buff> {
-    fn if_within_bounds<F>(&mut self, movement: F) 
-    where F: FnOnce(&mut Cursor){
+    /// Applies a cursor movement if it results in a valid position within the buffer bounds.
+    ///
+    /// # Arguments
+    /// * `movement` - A function that takes a mutable reference to a Cursor and moves it.
+    ///
+    /// # Behavior
+    /// 1. Stores the original cursor position.
+    /// 2. Applies the movement to the cursor.
+    /// 3. If the new line exceeds the buffer's max line, reverts to the original position.
+    /// 4. If the new column exceeds the max column for that line, adjusts to the max column.
+    fn if_within_bounds<F>(&mut self, movement: F)
+    where
+        F: FnOnce(&mut Cursor),
+    {
         let original_pos = self.pos();
         movement(&mut self.cursor);
-        if dbg!(self.pos().line > self.buffer.max_line()) {
+        if self.pos().line > self.buffer.max_line() {
             self.cursor.pos = original_pos;
-            return
+            return;
         }
         let new_pos = self.pos();
         let max_col = self.buffer.max_col(new_pos);
@@ -43,6 +120,11 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     fn pos(&self) -> LineCol {
         self.cursor.pos
     }
+    fn set_mode(&mut self, modal: Modal) {
+        self.cursor.mod_change(&modal);
+        self.mode = modal;
+    }
+
 
     #[inline]
     fn go(&mut self, to: LineCol) {
@@ -70,47 +152,139 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
 }
 
 impl<Buff: TextBuffer> MainEditor<Buff> {
+    /// Creates a new instance of MainEditor.
+    ///
+    /// # Arguments
+    /// * `buffer` - The text buffer to be edited.
+    ///
+    /// # Returns
+    /// A new `MainEditor` instance initialized with the given buffer and default cursor position.
     pub fn new(buffer: Buff) -> Self {
         MainEditor {
             buffer,
             cursor: Cursor::default(),
-            // mode: Modal::default(),
+            mode: Modal::default(),
         }
     }
 
+    /// Runs the main editor loop.
+    ///
+    /// This function:
+    /// 1. Enables raw mode for the terminal.
+    /// 2. Continuously draws the editor content and handles user input.
+    /// 3. Exits when the user presses the Esc key.
+    ///
+    /// # Returns
+    /// `Ok(())` if the editor runs and exits successfully, or an error if any operation fails.
+    ///
+    /// # Errors
+    /// This function can return an error if:
+    /// - Terminal operations fail (e.g., enabling raw mode, reading events)
+    /// - Drawing operations fail
     pub fn run(&mut self) -> Result<()> {
         terminal::enable_raw_mode()?;
         // let stdout = stdout();
         // execute!(stdout, terminal::Clear(ClearType::All))?;
 
         loop {
-            self.draw_rows()?;
-            self.draw_location_bar()?;
-            self.move_cursor()?;
+            let _ = match self.mode {
+                Modal::Normal => self.run_normal(),
+                Modal::Find => self.run_find(),
+                Modal::Insert => self.run_insert(),
+                Modal::Visual => self.run_visual(),
+                Modal::Command => {
+                    if self.run_command()? {
+                        break;
+                    }
+                    Ok(())
+                }
+            };
+        }
 
-            if let Event::Key(key_event) = event::read()? {
+        Ok(())
+    }
+
+    fn run_find(&mut self) -> Result<()> {
+        unimplemented!()
+    }
+    fn run_insert(&mut self) -> Result<()> {
+        self.draw_rows()?;
+        self.draw_info_bar()?;
+        self.draw_notification_bar()?;
+        self.move_cursor()?;
+
+        if let Event::Key(key_event) = event::read()? {
+            match key_event.code {
+                KeyCode::Char(c) => self.push(c),
+                KeyCode::Enter => self.newline(),
+                KeyCode::Backspace => self.delete(),
+                KeyCode::Left => self.if_within_bounds(Cursor::bump_left),
+                KeyCode::Right => self.if_within_bounds(Cursor::bump_right),
+                KeyCode::Up => self.if_within_bounds(Cursor::bump_up),
+                KeyCode::Down => self.if_within_bounds(Cursor::bump_down),
+                KeyCode::Esc => self.set_mode(Modal::Normal),
+                _ => { bar_dbg!("nothing"); }
+            }
+        };
+        Ok(())
+    }
+    fn run_visual(&mut self) -> Result<()> {
+        unimplemented!()
+    }
+    fn run_command(&mut self) -> Result<bool> {
+        self.draw_rows()?;
+        self.draw_info_bar()?;
+        self.draw_command_bar()
+    }
+    fn run_normal(&mut self) -> Result<()> {
+        self.draw_rows()?;
+        self.draw_info_bar()?;
+        self.draw_notification_bar()?;
+        self.move_cursor()?;
+
+        if let Event::Key(key_event) = event::read()? {
+            if let KeyCode::Char(ch) = key_event.code {
+                match ch {
+                    'i' => self.set_mode(Modal::Insert),
+                    'o' => {
+                        self.set_mode(Modal::Insert);
+                        self.newline()
+                    },
+                    ':' => self.set_mode(Modal::Command),
+                    'h' => self.if_within_bounds(Cursor::bump_left),
+                    'l' => self.if_within_bounds(Cursor::bump_right),
+                    'k' => self.if_within_bounds(Cursor::bump_up),
+                    'j' => self.if_within_bounds(Cursor::bump_down),
+                    _ => { bar_dbg!("nothing"); }
+                }
+            } else {
                 match key_event.code {
-                    KeyCode::Char(c) => self.push(c),
-                    KeyCode::Enter => self.newline(),
-                    KeyCode::Backspace => self.delete(),
-                    KeyCode::Left => self.if_within_bounds(Cursor::bump_left),
-                    KeyCode::Right => self.if_within_bounds(Cursor::bump_right),
-                    KeyCode::Up => self.if_within_bounds(Cursor::bump_up),
-                    KeyCode::Down => self.if_within_bounds(Cursor::bump_down),
-                    KeyCode::Esc => break,
-                    _ => {println!("nothing")}
+                    KeyCode::Esc => exit(0),
+                    _ => { bar_dbg!("nothing"); }
                 }
             }
-        }
-        
+
+        };
         Ok(())
-        }
+    }
 
     //         terminal::disable_raw_mode()?;
     //         execute!(stdout, terminal::Clear(ClearType::All))?;
     //         Ok(())
     //     }
 
+    /// Draws the main content of the editor.
+    ///
+    /// This function:
+    /// 1. Clears the screen.
+    /// 2. Draws each line of the buffer content.
+    /// 3. Stops drawing if it reaches the bottom of the terminal or the notification/info bar.
+    ///
+    /// # Returns
+    /// `Ok(())` if drawing succeeds, or an error if any terminal operation fails.
+    ///
+    /// # Errors
+    /// This function can return an error if terminal operations (e.g., clearing, moving cursor, writing) fail.
     fn draw_rows(&self) -> Result<()> {
         let mut stdout = stdout();
         let (_, term_height) = terminal::size()?;
@@ -120,7 +294,10 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
             crossterm::cursor::MoveTo(0, 0)
         )?;
         for (i, line) in self.buffer.get_entire_text().iter().enumerate() {
-            if i >= term_height as usize - 1 {
+            if i >= term_height as usize
+                - 1
+                - (NOTIFICATION_BAR_Y_LOCATION.max(INFO_BAR_Y_LOCATION))
+            {
                 break;
             }
             execute!(stdout, terminal::Clear(ClearType::CurrentLine))?;
@@ -129,6 +306,15 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         Ok(())
     }
 
+    /// Moves the cursor to its current position in the editor.
+    ///
+    /// This function updates the terminal cursor position to match the editor's internal cursor state.
+    ///
+    /// # Returns
+    /// `Ok(())` if the cursor is successfully moved, or an error if the operation fails.
+    ///
+    /// # Errors
+    /// This function can return an error if the terminal cursor movement operation fails.
     fn move_cursor(&self) -> Result<()> {
         execute!(
             stdout(),
@@ -136,32 +322,159 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         )
         .context("Failed moving cursor ")
     }
-    fn draw_location_bar(&self) -> Result<()> {
+
+    /// Draws the notification bar at the bottom of the terminal.
+    ///
+    /// This function is responsible for rendering the debug notification bar, which displays
+    /// the most recent message from the debug queue and potentially other editor status
+    /// information. It performs the following operations:
+    ///
+    /// # Display Characteristics
+    /// - Location: Positioned `NOTIFICATION_BAR_Y_LOCATION` lines from the bottom of the terminal.
+    /// - Color: White text on the terminal's default background.
+    /// - Padding: Starts `NOTIFICATION_BAR_TEXT_X_LOCATION` spaces from the left edge.
+    /// - Width: Utilizes the full width of the terminal, truncating the message if necessary.
+    ///
+    /// # Message Handling
+    /// - Messages exceeding the available width are truncated with an ellipsis ("...").
+    /// - After displaying, the message is removed from the queue.
+    ///
+    /// # Errors
+    /// Returns a `Result` which is:
+    /// - `Ok(())` if all terminal operations succeed.
+    /// - `Err(...)` if any terminal operation fails (e.g., writing to stdout, flushing).
+    fn draw_notification_bar(&self) -> Result<()> {
         let mut stdout = stdout();
         let (term_width, term_height) = terminal::size()?;
         execute!(
             stdout,
-            crossterm::cursor::MoveTo(0, term_height - 1 - INFO_BAR_Y_LOCATION),
+            crossterm::cursor::MoveTo(0, term_height - 1 - NOTIFICATION_BAR_Y_LOCATION as u16),
             terminal::Clear(ClearType::CurrentLine),
-            style::SetBackgroundColor(Color::DarkGrey),
             style::SetForegroundColor(Color::White),
         )?;
 
-        let pos_string = format!("{}", self.pos());
-        print!("{}{}", " ".repeat(INFO_BAR_LINEWIDTH_INDICATOR),pos_string);
-        
-        // Fill the rest of the line with spaces
-        let remaining_width = term_width as usize - pos_string.len() - INFO_BAR_LINEWIDTH_INDICATOR;
+        let msg = get_debug_messages()
+            .lock()
+            .unwrap()
+            .pop_front()
+            .unwrap_or("".to_string());
+        print!("{}{}", " ".repeat(NOTIFICATION_BAR_TEXT_X_LOCATION), msg);
+
+        let remaining_width = term_width as usize - msg.len() - NOTIFICATION_BAR_TEXT_X_LOCATION;
         print!("{:width$}", "", width = remaining_width);
-        
+
         stdout.flush()?;
-        
+
+        execute!(stdout, style::ResetColor)?;
+
+        Ok(())
+    }
+
+    /// Draws the information bar at the bottom of the editor.
+    ///
+    /// This function renders an information bar that displays the current cursor position
+    /// and potentially other editor status information.
+    ///
+    /// # Display Characteristics
+    /// - Location: Positioned `INFO_BAR_Y_LOCATION` lines from the bottom of the terminal.
+    /// - Background: Dark grey
+    /// - Text Color: White
+    /// - Content: Displays the cursor position, starting at `INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION`
+    ///
+    /// # Returns
+    /// `Ok(())` if the info bar is successfully drawn, or an error if any terminal operation fails.
+    ///
+    /// # Errors
+    /// This function can return an error if:
+    /// - Terminal size cannot be determined
+    /// - Cursor movement fails
+    /// - Writing to stdout fails
+    /// - Color setting or resetting fails
+    fn draw_info_bar(&self) -> Result<()> {
+    let mut stdout = stdout();
+    let (term_width, term_height) = terminal::size()?;
+    execute!(
+        stdout,
+        crossterm::cursor::MoveTo(0, term_height - 1 - INFO_BAR_Y_LOCATION as u16),
+        terminal::Clear(ClearType::CurrentLine),
+        style::SetBackgroundColor(Color::DarkGrey),
+        style::SetForegroundColor(Color::White),
+    )?;
+
+    let modal_string = format!("{}", self.mode);
+    let pos_string = format!("{}", self.pos());
+
+    print!("{}{}", " ".repeat(INFO_BAR_MODAL_INDICATOR_X_LOCATION), modal_string);
+
+    let middle_space = term_width as usize 
+        - INFO_BAR_MODAL_INDICATOR_X_LOCATION 
+        - modal_string.len() 
+        - pos_string.len() 
+        - INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE;
+
+    print!(
+        "{}{}",
+        " ".repeat(middle_space),
+        pos_string,
+    );
+
+    
+    print!("{}", " ".repeat(INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE));
+
+    stdout.flush()?;
+    execute!(stdout, style::ResetColor)?;
+    Ok(())
+}
+
+    fn draw_command_bar(&mut self) -> Result<bool> {
+        let mut stdout = stdout();
+        let (term_width, term_height) = terminal::size()?;
         execute!(
             stdout,
-            style::ResetColor
+            crossterm::cursor::MoveTo(0, term_height - 1 - NOTIFICATION_BAR_Y_LOCATION as u16),
+            terminal::Clear(ClearType::CurrentLine),
+            style::SetForegroundColor(Color::White),
         )?;
-        
-        Ok(())
+        self.push(':');
+
+        loop {
+            self.move_cursor()?;
+
+            if let Event::Key(key_event) = event::read()? {
+                match key_event.code {
+                    KeyCode::Char(c) => self.push(c),
+                    KeyCode::Enter => break,
+                    KeyCode::Backspace => self.delete(),
+                    KeyCode::Left => self.if_within_bounds(Cursor::bump_left),
+                    KeyCode::Right => self.if_within_bounds(Cursor::bump_right),
+                    KeyCode::Up => self.if_within_bounds(Cursor::bump_up),
+                    KeyCode::Down => self.if_within_bounds(Cursor::bump_down),
+                    KeyCode::Esc => {
+                        self.set_mode(Modal::Normal);
+                        break
+                    },
+                    _ => { bar_dbg!("nothing"); }
+                }
+        };
+
+        };
+
+        let msg = self.buffer.get_entire_text().join("");
+        print!("{}{}", " ".repeat(NOTIFICATION_BAR_TEXT_X_LOCATION), msg);
+
+        let remaining_width = term_width as usize - msg.len() - NOTIFICATION_BAR_TEXT_X_LOCATION;
+        print!("{:width$}", "", width = remaining_width);
+
+        stdout.flush()?;
+
+        execute!(stdout, style::ResetColor)?;
+        match msg.as_str() {
+            ":q" => return Ok(true),
+            "/PLACEHOLDER" => return Ok(false),
+            _ => {}
+        }
+
+        Ok(false)
     }
 }
 
@@ -224,3 +537,5 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
 //         }
 //     }
 // }
+//
+//

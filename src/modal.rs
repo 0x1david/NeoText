@@ -1,6 +1,8 @@
+use std::fmt::Display;
+
 use anyhow::Result;
 /// Contains the main modal variants of the editor.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub enum Modal {
     #[default]
     Normal,
@@ -17,3 +19,16 @@ impl Modal {
         Ok(())
     }
 }
+
+impl Display for Modal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let disp = match &self {
+            Self::Find => "FIND",
+            Self::Normal => "NORMAL",
+            Self::Command => "COMMAND",
+            Self::Insert => "INSERT",
+            Self::Visual => "VISUAL",
+        };
+        write!(f, "{}", disp)
+    }
+ }

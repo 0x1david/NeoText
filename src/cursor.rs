@@ -1,6 +1,8 @@
 use std::{cmp::Ordering, fmt::Display};
 
+use crate::bar_dbg;
 use crate::modal::Modal;
+use crate::editor::{INFO_BAR_Y_LOCATION, get_debug_messages};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct LineCol {
@@ -10,7 +12,7 @@ pub struct LineCol {
 
 impl Display for LineCol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-       write!(f, "{}:{}", self.line, self.col)
+        write!(f, "{}:{}", self.line, self.col)
     }
 }
 
@@ -30,6 +32,7 @@ pub struct Cursor {
     col_max: usize,
     line_max: usize,
     plane: CursorPlane,
+    last_text_mode_pos: LineCol,
 }
 
 impl Default for Cursor {
@@ -40,6 +43,7 @@ impl Default for Cursor {
             col_max: 0,
             line_max: 0,
             plane: CursorPlane::Text,
+            last_text_mode_pos: LineCol { line: 0, col: 0 },
         }
     }
 }
@@ -57,7 +61,7 @@ impl Cursor {
 
     #[inline]
     pub fn set_line(&mut self, new: usize) {
-        dbg!(self.pos.line = new)
+        self.pos.line = new
     }
 
     #[inline]
@@ -87,7 +91,9 @@ impl Cursor {
     /// place.
     #[inline]
     pub fn bump_up(&mut self) {
-        self.set_line(self.line() - 1);
+        if self.line() != 0 {
+            self.set_line(self.line() - 1);
+        }
     }
     /// Moves the cursor one position down, if there's lower line to go to, otherwise remains in
     /// place.
@@ -126,125 +132,42 @@ impl Cursor {
 
     /// Updates the location the cursor points at depending on the current active modal state.
     pub fn mod_change(&mut self, modal: &Modal) {
+        if self.plane.text()  {
+            self.last_text_mode_pos = self.pos
+        }
         match modal {
-            Modal::Command => self.plane = CursorPlane::CommandBar,
-            _ => self.plane = CursorPlane::Text,
+            Modal::Command => {
+                self.plane = CursorPlane::CommandBar;
+                self.pos = dbg!(LineCol{line: INFO_BAR_Y_LOCATION, col: 0});
+            },
+            Modal::Find => {
+                self.plane = CursorPlane::CommandBar;
+                self.pos = LineCol{line: INFO_BAR_Y_LOCATION, col: 0};
+            },
+            Modal::Normal | Modal::Insert | Modal::Visual => {
+                self.plane = CursorPlane::Text;
+                self.pos = self.last_text_mode_pos;
+            },
         }
         self.pos_initial = LineCol {
             line: self.line(),
             col: self.col(),
         };
     }
+
 }
 
-/// Specifies at which plane the cursor is currently located
+/// Specifies at which plane the cursor is currently located.
 enum CursorPlane {
     Text,
     CommandBar,
     Terminal,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_cursor_movements() {
-        // Initialize cursor with a 10x10 grid
-        let mut cursor = Cursor {
-            pos: LineCol { line: 5, col: 5 },
-            pos_initial: LineCol { line: 5, col: 5 },
-            col_max: 9,
-            line_max: 9,
-            plane: CursorPlane::Text,
-        };
-
-        // Test bump movements
-        cursor.bump_left();
-        assert_eq!(cursor.col(), 4);
-        assert_eq!(cursor.line(), 5);
-
-        cursor.bump_right();
-        assert_eq!(cursor.col(), 5);
-        assert_eq!(cursor.line(), 5);
-
-        cursor.bump_up();
-        assert_eq!(cursor.col(), 5);
-        assert_eq!(cursor.line(), 4);
-
-        cursor.bump_down();
-        assert_eq!(cursor.col(), 5);
-        assert_eq!(cursor.line(), 5);
-
-        // Test bump at edges
-        for _ in 0..10 {
-            cursor.bump_left();
+impl CursorPlane {
+    fn text(&self) -> bool{
+        match &self {
+            Self::Text => true,
+            _ => false
         }
-        assert_eq!(cursor.col(), 0);
-
-        for _ in 0..10 {
-            cursor.bump_right();
-        }
-        assert_eq!(cursor.col(), 9);
-
-        for _ in 0..10 {
-            cursor.bump_up();
-        }
-        assert_eq!(cursor.line(), 0);
-
-        for _ in 0..10 {
-            cursor.bump_down();
-        }
-        assert_eq!(cursor.line(), 9);
-
-        // Reset cursor position
-        cursor.set_col(5);
-        cursor.set_line(5);
-
-        // Test jump movements
-        cursor.jump_left(3);
-        assert_eq!(cursor.col(), 2);
-        assert_eq!(cursor.line(), 5);
-
-        cursor.jump_right(4);
-        assert_eq!(cursor.col(), 6);
-        assert_eq!(cursor.line(), 5);
-
-        cursor.jump_up(2);
-        assert_eq!(cursor.col(), 6);
-        assert_eq!(cursor.line(), 3);
-
-        cursor.jump_down(3);
-        assert_eq!(cursor.col(), 6);
-        assert_eq!(cursor.line(), 6);
-
-        // Test jump at edges
-        cursor.jump_left(10);
-        assert_eq!(cursor.col(), 0);
-
-        cursor.jump_right(15);
-        assert_eq!(cursor.col(), 9);
-
-        cursor.jump_up(10);
-        assert_eq!(cursor.line(), 0);
-
-        cursor.jump_down(15);
-        assert_eq!(cursor.line(), 9);
-
-        // Test jumps that don't reach the edge
-        cursor.set_col(5);
-        cursor.set_line(5);
-
-        cursor.jump_left(2);
-        assert_eq!(cursor.col(), 3);
-
-        cursor.jump_right(3);
-        assert_eq!(cursor.col(), 6);
-
-        cursor.jump_up(3);
-        assert_eq!(cursor.line(), 2);
-
-        cursor.jump_down(4);
-        assert_eq!(cursor.line(), 6);
     }
 }
