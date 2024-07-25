@@ -1,13 +1,19 @@
 use crate::buffer::{BufferError, TextBuffer, VecBuffer};
 use crate::cursor::{Cursor, LineCol};
 use anyhow::{Result, Context};
+use crossterm::style::{self, style, Color};
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
     terminal::{self, ClearType},
 };
+
+
 use crate::modal::Modal;
-use std::io::stdout;
+use std::io::{stdout, Write};
+
+const INFO_BAR_Y_LOCATION: u16 = 1;
+const INFO_BAR_LINEWIDTH_INDICATOR: usize = 4;
 
 /// The main editor is used as the main API for all commands
 pub struct MainEditor<Buff: TextBuffer> {
@@ -22,8 +28,14 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     where F: FnOnce(&mut Cursor){
         let original_pos = self.pos();
         movement(&mut self.cursor);
-        if self.pos() > self.buffer.bounds() {
+        if dbg!(self.pos().line > self.buffer.max_line()) {
             self.cursor.pos = original_pos;
+            return
+        }
+        let new_pos = self.pos();
+        let max_col = self.buffer.max_col(new_pos);
+        if new_pos.col > max_col {
+            self.cursor.set_col(max_col);
         }
     }
 
@@ -73,6 +85,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
 
         loop {
             self.draw_rows()?;
+            self.draw_location_bar()?;
             self.move_cursor()?;
 
             if let Event::Key(key_event) = event::read()? {
@@ -85,12 +98,13 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                     KeyCode::Up => self.if_within_bounds(Cursor::bump_up),
                     KeyCode::Down => self.if_within_bounds(Cursor::bump_down),
                     KeyCode::Esc => break,
-                    _ => {}
+                    _ => {println!("nothing")}
                 }
             }
         }
+        
         Ok(())
-    }
+        }
 
     //         terminal::disable_raw_mode()?;
     //         execute!(stdout, terminal::Clear(ClearType::All))?;
@@ -99,12 +113,16 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
 
     fn draw_rows(&self) -> Result<()> {
         let mut stdout = stdout();
+        let (_, term_height) = terminal::size()?;
         execute!(
             stdout,
             terminal::Clear(ClearType::All),
             crossterm::cursor::MoveTo(0, 0)
         )?;
-        for line in self.buffer.get_entire_text() {
+        for (i, line) in self.buffer.get_entire_text().iter().enumerate() {
+            if i >= term_height as usize - 1 {
+                break;
+            }
             execute!(stdout, terminal::Clear(ClearType::CurrentLine))?;
             println!("{}\r", line);
         }
@@ -117,6 +135,33 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
             crossterm::cursor::MoveTo(self.cursor.col() as u16, self.cursor.line() as u16)
         )
         .context("Failed moving cursor ")
+    }
+    fn draw_location_bar(&self) -> Result<()> {
+        let mut stdout = stdout();
+        let (term_width, term_height) = terminal::size()?;
+        execute!(
+            stdout,
+            crossterm::cursor::MoveTo(0, term_height - 1 - INFO_BAR_Y_LOCATION),
+            terminal::Clear(ClearType::CurrentLine),
+            style::SetBackgroundColor(Color::DarkGrey),
+            style::SetForegroundColor(Color::White),
+        )?;
+
+        let pos_string = format!("{}", self.pos());
+        print!("{}{}", " ".repeat(INFO_BAR_LINEWIDTH_INDICATOR),pos_string);
+        
+        // Fill the rest of the line with spaces
+        let remaining_width = term_width as usize - pos_string.len() - INFO_BAR_LINEWIDTH_INDICATOR;
+        print!("{:width$}", "", width = remaining_width);
+        
+        stdout.flush()?;
+        
+        execute!(
+            stdout,
+            style::ResetColor
+        )?;
+        
+        Ok(())
     }
 }
 

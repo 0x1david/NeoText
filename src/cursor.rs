@@ -8,6 +8,12 @@ pub struct LineCol {
     pub col: usize,
 }
 
+impl Display for LineCol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+       write!(f, "{}:{}", self.line, self.col)
+    }
+}
+
 impl PartialOrd for LineCol {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         match self.line.cmp(&other.line) {
@@ -51,7 +57,7 @@ impl Cursor {
 
     #[inline]
     pub fn set_line(&mut self, new: usize) {
-        self.pos.line = new
+        dbg!(self.pos.line = new)
     }
 
     #[inline]
@@ -75,25 +81,19 @@ impl Cursor {
     /// place.
     #[inline]
     pub fn bump_right(&mut self) {
-        if self.col() != self.col_max {
-            self.set_col(self.col() + 1);
-        }
+        self.set_col(self.col() + 1);
     }
     /// Moves the cursor one position up, if there's upper line to go to, otherwise remains in
     /// place.
     #[inline]
     pub fn bump_up(&mut self) {
-        if self.line() != 0 {
-            self.set_line(self.line() - 1);
-        }
+        self.set_line(self.line() - 1);
     }
     /// Moves the cursor one position down, if there's lower line to go to, otherwise remains in
     /// place.
     #[inline]
     pub fn bump_down(&mut self) {
-        if self.line() != self.line_max {
-            self.set_line(self.line() + 1);
-        }
+        self.set_line(self.line() + 1);
     }
     /// Moves the cursor left by the specified distance, clamping at zero.
     /// TODO: Check whether Y is in the allowed boundaries for the new row, if it isnt, update the

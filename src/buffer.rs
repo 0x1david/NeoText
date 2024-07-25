@@ -4,7 +4,6 @@ use std::{collections::VecDeque, ops::Range};
 /// Trait defining the interface for a text buffer
 pub trait TextBuffer {
     fn insert_newline(&mut self, at: LineCol) -> LineCol;
-    fn bounds(&self) -> LineCol;
     /// Insert a single symbol at specified position
     fn insert(&mut self, at: LineCol, insertable: char) -> Result<LineCol, BufferError>;
 
@@ -56,6 +55,11 @@ pub trait TextBuffer {
 
     /// Redo the last undone operation
     fn get_entire_text(&self) -> &Vec<String>;
+
+    /// Redo the last undone operation
+    fn max_line(&self) -> usize;
+    /// Redo the last undone operation
+    fn max_col(&self, at: LineCol) -> usize;
 }
 
 /// Error type for buffer operations
@@ -136,21 +140,17 @@ impl Default for VecBuffer {
 }
 
 impl TextBuffer for VecBuffer {
+    fn max_col(&self, at: LineCol) -> usize {
+        self.lines[at.line].len()
+    }
+    fn max_line(&self) -> usize {
+        self.lines.len()
+    }
     fn insert_newline(&mut self, mut at: LineCol) -> LineCol {
         self.lines.insert(at.line + 1, Default::default());
         at.line += 1;
         at.col = 0;
         at
-    }
-    fn bounds(&self) -> LineCol {
-        LineCol {
-            line: self.line_count() - 1,
-            col: self
-                .lines
-                .last()
-                .expect("There should never be no lines at all.")
-                .len(),
-        }
     }
     fn insert(&mut self, mut at: LineCol, ch: char) -> Result<LineCol, BufferError> {
         if at.line > self.lines.len() || at.col > self.lines[at.line].len() {
