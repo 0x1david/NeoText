@@ -1,8 +1,8 @@
 use crate::{
-    cursor::{Cursor, LineCol},
+    cursor::LineCol,
     modal::Modal,
 };
-use std::{collections::VecDeque, ops::Range};
+use std::collections::VecDeque;
 
 /// Trait defining the interface for a text buffer
 pub trait TextBuffer {

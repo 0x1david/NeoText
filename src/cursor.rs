@@ -1,7 +1,6 @@
 use std::{cmp::Ordering, fmt::Display};
 
-use crate::bar_dbg;
-use crate::editor::{get_debug_messages, INFO_BAR_Y_LOCATION};
+use crate::editor::INFO_BAR_Y_LOCATION;
 use crate::modal::Modal;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]

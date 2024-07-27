@@ -1,4 +1,5 @@
-use anyhow::{Context, Result};
+#![allow(dead_code)]
+use anyhow::Result;
 use buffer::VecBuffer;
 use editor::MainEditor;
 
