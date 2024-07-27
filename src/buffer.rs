@@ -54,12 +54,12 @@ pub trait TextBuffer {
     /// Redo the last undone operation
     fn redo(&mut self, at: LineCol) -> Result<LineCol, BufferError>;
 
-    /// Redo the last undone operation
     fn get_entire_text(&self) -> &Vec<String>;
+    fn get_normal_text(&self) -> &Vec<String>;
+    fn get_terminal_text(&self) -> &str;
+    fn get_command_text(&self) -> &Vec<String>;
 
-    /// Redo the last undone operation
     fn max_line(&self) -> usize;
-    /// Redo the last undone operation
     fn max_col(&self, at: LineCol) -> usize;
 }
 
@@ -209,7 +209,7 @@ impl TextBuffer for VecBuffer {
         self.future
             .pop()
             .map(|future_state| {
-                let current_state = std::mem::replace(self.get_mut_buffer(), future_state.content);
+                let current_state = std::mem::replace(&mut self.text, future_state.content);
                 self.past.push(StateCapsule {
                     content: current_state,
                     loc: at,
@@ -225,7 +225,7 @@ impl TextBuffer for VecBuffer {
         self.past
             .pop()
             .map(|past_state| {
-                let current_state = std::mem::replace(self.get_mut_buffer(), past_state.content);
+                let current_state = std::mem::replace(&mut self.text, past_state.content);
                 self.future.push(StateCapsule {
                     content: current_state,
                     loc: at,
@@ -638,7 +638,15 @@ impl TextBuffer for VecBuffer {
     fn get_entire_text(&self) -> &Vec<String> {
         self.get_buffer()
     }
-
+    fn get_normal_text(&self) -> &Vec<String> {
+        &self.text
+    }
+    fn get_command_text(&self) -> &Vec<String> {
+        &self.command
+    }    
+    fn get_terminal_text(&self) -> &str {
+        &self.terminal[0]
+    }    
     #[inline]
     fn delete(&mut self, mut at: LineCol) -> Result<LineCol, BufferError> {
         if at.line >= self.get_buffer().len() || at.col > self.get_buffer()[at.line].len() {
@@ -1241,5 +1249,93 @@ mod tests {
             )
             .unwrap();
         assert_eq!(buffer.text.last().unwrap(), "New last line");
+    }
+  #[test]
+    fn test_set_plane_and_buffer_operations() {
+        let mut buffer = VecBuffer::default();
+        
+        // Start in Normal mode
+        assert_eq!(buffer.get_buffer(), &buffer.text);
+        
+        // Insert text in Normal mode
+        buffer.insert_text(LineCol { line: 0, col: 0 }, "Normal text".to_string(), false).unwrap();
+        assert_eq!(buffer.text, vec!["Normal text"]);
+        
+        // Switch to Command mode
+        buffer.set_plane(Modal::Command).unwrap();
+        assert_eq!(buffer.get_buffer(), &buffer.command);
+        
+        // Insert text in Command mode
+        buffer.insert_text(LineCol { line: 0, col: 0 }, "Command text".to_string(), false).unwrap();
+        assert_eq!(buffer.command, vec!["Command text"]);
+        
+        // Switch to Normal mode and verify text
+        buffer.set_plane(Modal::Normal).unwrap();
+        assert_eq!(buffer.get_buffer(), &buffer.text);
+        assert_eq!(buffer.text, vec!["Normal text"]);
+    }
+
+
+    #[test]
+    fn test_buffer_independence() {
+        let mut buffer = VecBuffer::default();
+        
+        // Insert text in Normal mode
+        buffer.set_plane(Modal::Normal).unwrap();
+        buffer.insert_text(LineCol { line: 0, col: 0 }, "Normal text".to_string(), false).unwrap();
+        
+        // Insert text in Command mode
+        buffer.set_plane(Modal::Command).unwrap();
+        buffer.insert_text(LineCol { line: 0, col: 0 }, "Command text".to_string(), false).unwrap();
+        
+        // Verify that buffers remain independent
+        buffer.set_plane(Modal::Normal).unwrap();
+        assert_eq!(buffer.text, vec!["Normal text"]);
+        buffer.set_plane(Modal::Command).unwrap();
+        assert_eq!(buffer.command, vec!["Command text"]);
+    }
+
+    #[test]
+    fn test_find_across_buffers() {
+        let mut buffer = VecBuffer::default();
+        
+        // Insert text in Normal mode
+        buffer.set_plane(Modal::Normal).unwrap();
+        buffer.insert_text(LineCol { line: 0, col: 0 }, "Normal text to find".to_string(), false).unwrap();
+        
+        // Insert text in Command mode
+        buffer.set_plane(Modal::Command).unwrap();
+        buffer.insert_text(LineCol { line: 0, col: 0 }, "Command text to find".to_string(), false).unwrap();
+        
+        // Find in Normal mode
+        buffer.set_plane(Modal::Normal).unwrap();
+        let result = buffer.find("to find", LineCol { line: 0, col: 0 });
+        assert_eq!(result, Ok(LineCol { line: 0, col: 12 }));
+        
+        // Find in Command mode
+        buffer.set_plane(Modal::Command).unwrap();
+        let result = buffer.find("to find", LineCol { line: 0, col: 0 });
+        assert_eq!(result, Ok(LineCol { line: 0, col: 13 }));
+    }
+
+    #[test]
+    fn test_delete_across_buffers() {
+        let mut buffer = VecBuffer::default();
+        
+        // Insert and delete in Normal mode
+        buffer.set_plane(Modal::Normal).unwrap();
+        buffer.insert_text(LineCol { line: 0, col: 0 }, "Normal text".to_string(), false).unwrap();
+        buffer.delete_selection(LineCol { line: 0, col: 0 }, LineCol { line: 0, col: 6 }).unwrap();
+        assert_eq!(buffer.text, vec![" text"]);
+        
+        // Insert and delete in Command mode
+        buffer.set_plane(Modal::Command).unwrap();
+        buffer.insert_text(LineCol { line: 0, col: 0 }, "Command text".to_string(), false).unwrap();
+        buffer.delete_selection(LineCol { line: 0, col: 0 }, LineCol { line: 0, col: 7 }).unwrap();
+        assert_eq!(buffer.command, vec![" text"]);
+        
+        // Verify Normal mode text remains unchanged
+        buffer.set_plane(Modal::Normal).unwrap();
+        assert_eq!(buffer.text, vec![" text"]);
     }
 }
