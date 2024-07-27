@@ -122,9 +122,9 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     }
     fn set_mode(&mut self, modal: Modal) {
         self.cursor.mod_change(&modal);
+        self.buffer.set_plane(&modal);
         self.mode = modal;
     }
-
 
     #[inline]
     fn go(&mut self, to: LineCol) {
@@ -223,7 +223,9 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                 KeyCode::Up => self.if_within_bounds(Cursor::bump_up),
                 KeyCode::Down => self.if_within_bounds(Cursor::bump_down),
                 KeyCode::Esc => self.set_mode(Modal::Normal),
-                _ => { bar_dbg!("nothing"); }
+                _ => {
+                    bar_dbg!("nothing");
+                }
             }
         };
         Ok(())
@@ -249,21 +251,24 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                     'o' => {
                         self.set_mode(Modal::Insert);
                         self.newline()
-                    },
+                    }
                     ':' => self.set_mode(Modal::Command),
                     'h' => self.if_within_bounds(Cursor::bump_left),
                     'l' => self.if_within_bounds(Cursor::bump_right),
                     'k' => self.if_within_bounds(Cursor::bump_up),
                     'j' => self.if_within_bounds(Cursor::bump_down),
-                    _ => { bar_dbg!("nothing"); }
+                    _ => {
+                        bar_dbg!("nothing");
+                    }
                 }
             } else {
                 match key_event.code {
                     KeyCode::Esc => exit(0),
-                    _ => { bar_dbg!("nothing"); }
+                    _ => {
+                        bar_dbg!("nothing");
+                    }
                 }
             }
-
         };
         Ok(())
     }
@@ -391,40 +396,42 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     /// - Writing to stdout fails
     /// - Color setting or resetting fails
     fn draw_info_bar(&self) -> Result<()> {
-    let mut stdout = stdout();
-    let (term_width, term_height) = terminal::size()?;
-    execute!(
-        stdout,
-        crossterm::cursor::MoveTo(0, term_height - 1 - INFO_BAR_Y_LOCATION as u16),
-        terminal::Clear(ClearType::CurrentLine),
-        style::SetBackgroundColor(Color::DarkGrey),
-        style::SetForegroundColor(Color::White),
-    )?;
+        let mut stdout = stdout();
+        let (term_width, term_height) = terminal::size()?;
+        execute!(
+            stdout,
+            crossterm::cursor::MoveTo(0, term_height - 1 - INFO_BAR_Y_LOCATION as u16),
+            terminal::Clear(ClearType::CurrentLine),
+            style::SetBackgroundColor(Color::DarkGrey),
+            style::SetForegroundColor(Color::White),
+        )?;
 
-    let modal_string = format!("{}", self.mode);
-    let pos_string = format!("{}", self.pos());
+        let modal_string = format!("{}", self.mode);
+        let pos_string = format!("{}", self.pos());
 
-    print!("{}{}", " ".repeat(INFO_BAR_MODAL_INDICATOR_X_LOCATION), modal_string);
+        print!(
+            "{}{}",
+            " ".repeat(INFO_BAR_MODAL_INDICATOR_X_LOCATION),
+            modal_string
+        );
 
-    let middle_space = term_width as usize 
-        - INFO_BAR_MODAL_INDICATOR_X_LOCATION 
-        - modal_string.len() 
-        - pos_string.len() 
-        - INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE;
+        let middle_space = term_width as usize
+            - INFO_BAR_MODAL_INDICATOR_X_LOCATION
+            - modal_string.len()
+            - pos_string.len()
+            - INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE;
 
-    print!(
-        "{}{}",
-        " ".repeat(middle_space),
-        pos_string,
-    );
+        print!("{}{}", " ".repeat(middle_space), pos_string,);
 
-    
-    print!("{}", " ".repeat(INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE));
+        print!(
+            "{}",
+            " ".repeat(INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE)
+        );
 
-    stdout.flush()?;
-    execute!(stdout, style::ResetColor)?;
-    Ok(())
-}
+        stdout.flush()?;
+        execute!(stdout, style::ResetColor)?;
+        Ok(())
+    }
 
     fn draw_command_bar(&mut self) -> Result<bool> {
         let mut stdout = stdout();
@@ -451,13 +458,14 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                     KeyCode::Down => self.if_within_bounds(Cursor::bump_down),
                     KeyCode::Esc => {
                         self.set_mode(Modal::Normal);
-                        break
-                    },
-                    _ => { bar_dbg!("nothing"); }
+                        break;
+                    }
+                    _ => {
+                        bar_dbg!("nothing");
+                    }
                 }
-        };
-
-        };
+            };
+        }
 
         let msg = self.buffer.get_entire_text().join("");
         print!("{}{}", " ".repeat(NOTIFICATION_BAR_TEXT_X_LOCATION), msg);

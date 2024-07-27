@@ -31,4 +31,4 @@ impl Display for Modal {
         };
         write!(f, "{}", disp)
     }
- }
+}

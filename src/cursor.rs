@@ -1,8 +1,8 @@
 use std::{cmp::Ordering, fmt::Display};
 
 use crate::bar_dbg;
+use crate::editor::{get_debug_messages, INFO_BAR_Y_LOCATION};
 use crate::modal::Modal;
-use crate::editor::{INFO_BAR_Y_LOCATION, get_debug_messages};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct LineCol {
@@ -132,29 +132,34 @@ impl Cursor {
 
     /// Updates the location the cursor points at depending on the current active modal state.
     pub fn mod_change(&mut self, modal: &Modal) {
-        if self.plane.text()  {
+        if self.plane.text() {
             self.last_text_mode_pos = self.pos
         }
         match modal {
             Modal::Command => {
                 self.plane = CursorPlane::CommandBar;
-                self.pos = dbg!(LineCol{line: INFO_BAR_Y_LOCATION, col: 0});
-            },
+                self.pos = dbg!(LineCol {
+                    line: INFO_BAR_Y_LOCATION,
+                    col: 0
+                });
+            }
             Modal::Find => {
                 self.plane = CursorPlane::CommandBar;
-                self.pos = LineCol{line: INFO_BAR_Y_LOCATION, col: 0};
-            },
+                self.pos = LineCol {
+                    line: INFO_BAR_Y_LOCATION,
+                    col: 0,
+                };
+            }
             Modal::Normal | Modal::Insert | Modal::Visual => {
                 self.plane = CursorPlane::Text;
                 self.pos = self.last_text_mode_pos;
-            },
+            }
         }
         self.pos_initial = LineCol {
             line: self.line(),
             col: self.col(),
         };
     }
-
 }
 
 /// Specifies at which plane the cursor is currently located.
@@ -164,10 +169,10 @@ enum CursorPlane {
     Terminal,
 }
 impl CursorPlane {
-    fn text(&self) -> bool{
+    fn text(&self) -> bool {
         match &self {
             Self::Text => true,
-            _ => false
+            _ => false,
         }
     }
 }
