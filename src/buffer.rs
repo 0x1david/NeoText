@@ -658,7 +658,6 @@ impl TextBuffer for VecBuffer {
     fn get_terminal_text(&self) -> &str {
         &self.terminal[0]
     }
-    #[inline]
     fn delete(&mut self, mut at: LineCol) -> Result<LineCol, BufferError> {
         if at.line >= self.get_buffer().len() || at.col > self.get_buffer()[at.line].len() {
             return Err(BufferError::InvalidPosition);

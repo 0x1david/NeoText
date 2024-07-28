@@ -426,7 +426,13 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
             - pos_string.len()
             - INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE;
 
-        format!("{}{}{}{}", modal_string, " ".repeat(middle_space), pos_string, " ".repeat(INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE))
+        format!(
+            "{}{}{}{}",
+            modal_string,
+            " ".repeat(middle_space),
+            pos_string,
+            " ".repeat(INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE)
+        )
     }
 
     fn get_command_bar_content(&self) -> String {

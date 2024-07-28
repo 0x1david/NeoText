@@ -2,7 +2,10 @@
 use std::io::stdout;
 
 use buffer::VecBuffer;
-use crossterm::{execute, terminal::{self, EnterAlternateScreen, LeaveAlternateScreen}};
+use crossterm::{
+    execute,
+    terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
+};
 use editor::MainEditor;
 
 mod bars;
