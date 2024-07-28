@@ -1,7 +1,4 @@
-use crate::{
-    cursor::LineCol,
-    modal::Modal,
-};
+use crate::{cursor::LineCol, modal::Modal};
 use std::collections::VecDeque;
 
 /// Trait defining the interface for a text buffer
@@ -70,6 +67,7 @@ pub trait TextBuffer {
     fn max_line(&self) -> usize;
     /// Get maximum column bound for the current buffer
     fn max_col(&self, at: LineCol) -> usize;
+    fn is_command_empty(&self) -> bool;
 }
 
 /// Error type for buffer operations
@@ -183,6 +181,9 @@ impl VecBuffer {
 }
 
 impl TextBuffer for VecBuffer {
+    fn is_command_empty(&self) -> bool {
+        self.command[0].is_empty()
+    }
     fn set_plane(&mut self, modal: &Modal) {
         self.plane = match modal {
             Modal::Command | Modal::Find => BufferPlane::Command,

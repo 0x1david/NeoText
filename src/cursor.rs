@@ -1,6 +1,5 @@
 use std::{cmp::Ordering, fmt::Display};
 
-use crate::editor::INFO_BAR_Y_LOCATION;
 use crate::modal::Modal;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -137,15 +136,12 @@ impl Cursor {
         match modal {
             Modal::Command => {
                 self.plane = CursorPlane::CommandBar;
-                self.pos = dbg!(LineCol {
-                    line: INFO_BAR_Y_LOCATION,
-                    col: 0
-                });
+                self.pos = dbg!(LineCol { line: 0, col: 0 });
             }
             Modal::Find => {
                 self.plane = CursorPlane::CommandBar;
                 self.pos = LineCol {
-                    line: INFO_BAR_Y_LOCATION,
+                    line: 0,
                     col: 0,
                 };
             }

@@ -1,8 +1,12 @@
+use crate::bars::{
+    draw_bar, COMMAND_BAR, INFO_BAR, INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE,
+    INFO_BAR_MODAL_INDICATOR_X_LOCATION, INFO_BAR_Y_LOCATION, NOTIFICATION_BAR,
+    NOTIFICATION_BAR_Y_LOCATION,
+};
 use crate::buffer::{BufferError, TextBuffer};
 use crate::cursor::{Cursor, LineCol};
 use crate::modal::Modal;
 use anyhow::{Context, Result};
-use crossterm::style::{self, Color};
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
@@ -11,15 +15,10 @@ use crossterm::{
 
 // use crate::modal::Modal;
 use std::collections::VecDeque;
-use std::io::{stdout, Write};
+use std::io::stdout;
 use std::process::exit;
 use std::sync::{Mutex, OnceLock};
 
-pub const INFO_BAR_Y_LOCATION: usize = 1;
-const NOTIFICATION_BAR_Y_LOCATION: usize = 0;
-const INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE: usize = 1;
-const INFO_BAR_MODAL_INDICATOR_X_LOCATION: usize = 1;
-const NOTIFICATION_BAR_TEXT_X_LOCATION: usize = 2;
 static DEBUG_MESSAGES: OnceLock<Mutex<VecDeque<String>>> = OnceLock::new();
 
 /// Retrieves or initializes the global debug message queue.
@@ -60,7 +59,7 @@ pub fn get_debug_messages() -> &'static Mutex<VecDeque<String>> {
 /// This macro will not panic, but it may fail silently if it cannot acquire
 /// the lock on the debug message queue.
 #[macro_export]
-macro_rules! bar_dbg{
+macro_rules! bar_dbg {
     ($val:expr) => {{
         let file = file!();
         let line = line!();
@@ -183,8 +182,6 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     /// - Drawing operations fail
     pub fn run(&mut self) -> Result<()> {
         terminal::enable_raw_mode()?;
-        // let stdout = stdout();
-        // execute!(stdout, terminal::Clear(ClearType::All))?;
 
         loop {
             let _ = match self.mode {
@@ -193,8 +190,15 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                 Modal::Insert => self.run_insert(),
                 Modal::Visual => self.run_visual(),
                 Modal::Command => {
+                    if self.buffer.is_command_empty() {
+                        self.push(':')
+                    }
                     if self.run_command()? {
-                        break;
+                        match self.buffer.get_command_text()[0].as_str() {
+                            ":q" => break,
+                            "/EXIT NOW" => exit(0),
+                            _ => {}
+                        };
                     }
                     Ok(())
                 }
@@ -209,8 +213,10 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     }
     fn run_insert(&mut self) -> Result<()> {
         self.draw_rows()?;
-        self.draw_info_bar()?;
-        self.draw_notification_bar()?;
+        draw_bar(&INFO_BAR, |term_width, _| {
+            self.get_info_bar_content(term_width)
+        })?;
+        draw_bar(&NOTIFICATION_BAR, |_, _| self.get_notif_bar_content())?;
         self.move_cursor()?;
 
         if let Event::Key(key_event) = event::read()? {
@@ -235,13 +241,36 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     }
     fn run_command(&mut self) -> Result<bool> {
         self.draw_rows()?;
-        self.draw_info_bar()?;
-        self.draw_command_bar()
+        draw_bar(&INFO_BAR, |term_width, _| {
+            self.get_info_bar_content(term_width)
+        })?;
+        draw_bar(&COMMAND_BAR, |_, _| self.get_command_bar_content())?;
+        let (_, term_height) = terminal::size()?;
+        self.move_command_cursor(term_height)?;
+
+        if let Event::Key(key_event) = event::read()? {
+            match key_event.code {
+                KeyCode::Enter => return Ok(true),
+                KeyCode::Char(c) => self.push(c),
+                KeyCode::Backspace => self.delete(),
+                KeyCode::Left => self.if_within_bounds(Cursor::bump_left),
+                KeyCode::Right => self.if_within_bounds(Cursor::bump_right),
+                KeyCode::Esc => {
+                    self.set_mode(Modal::Normal);
+                }
+                _ => {
+                    bar_dbg!("nothing");
+                }
+            }
+        };
+        Ok(false)
     }
     fn run_normal(&mut self) -> Result<()> {
         self.draw_rows()?;
-        self.draw_info_bar()?;
-        self.draw_notification_bar()?;
+        draw_bar(&INFO_BAR, |term_width, _| {
+            self.get_info_bar_content(term_width)
+        })?;
+        draw_bar(&NOTIFICATION_BAR, |_, _| self.get_notif_bar_content())?;
         self.move_cursor()?;
 
         if let Event::Key(key_event) = event::read()? {
@@ -298,7 +327,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
             terminal::Clear(ClearType::All),
             crossterm::cursor::MoveTo(0, 0)
         )?;
-        for (i, line) in self.buffer.get_entire_text().iter().enumerate() {
+        for (i, line) in self.buffer.get_normal_text().iter().enumerate() {
             if i >= term_height as usize
                 - 1
                 - (NOTIFICATION_BAR_Y_LOCATION.max(INFO_BAR_Y_LOCATION))
@@ -311,7 +340,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         Ok(())
     }
 
-    /// Moves the cursor to its current position in the editor.
+    /// Moves the cursor graphics to its current position in the editor.
     ///
     /// This function updates the terminal cursor position to match the editor's internal cursor state.
     ///
@@ -324,6 +353,17 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         execute!(
             stdout(),
             crossterm::cursor::MoveTo(self.cursor.col() as u16, self.cursor.line() as u16)
+        )
+        .context("Failed moving cursor ")
+    }
+
+    fn move_command_cursor(&self, term_size: u16) -> Result<()> {
+        execute!(
+            stdout(),
+            crossterm::cursor::MoveTo(
+                self.cursor.col() as u16,
+                term_size - NOTIFICATION_BAR_Y_LOCATION as u16
+            )
         )
         .context("Failed moving cursor ")
     }
@@ -348,31 +388,12 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     /// Returns a `Result` which is:
     /// - `Ok(())` if all terminal operations succeed.
     /// - `Err(...)` if any terminal operation fails (e.g., writing to stdout, flushing).
-    fn draw_notification_bar(&self) -> Result<()> {
-        let mut stdout = stdout();
-        let (term_width, term_height) = terminal::size()?;
-        execute!(
-            stdout,
-            crossterm::cursor::MoveTo(0, term_height - 1 - NOTIFICATION_BAR_Y_LOCATION as u16),
-            terminal::Clear(ClearType::CurrentLine),
-            style::SetForegroundColor(Color::White),
-        )?;
-
-        let msg = get_debug_messages()
+    fn get_notif_bar_content(&self) -> String {
+        get_debug_messages()
             .lock()
             .unwrap()
             .pop_front()
-            .unwrap_or("".to_string());
-        print!("{}{}", " ".repeat(NOTIFICATION_BAR_TEXT_X_LOCATION), msg);
-
-        let remaining_width = term_width as usize - msg.len() - NOTIFICATION_BAR_TEXT_X_LOCATION;
-        print!("{:width$}", "", width = remaining_width);
-
-        stdout.flush()?;
-
-        execute!(stdout, style::ResetColor)?;
-
-        Ok(())
+            .unwrap_or("".to_string())
     }
 
     /// Draws the information bar at the bottom of the editor.
@@ -395,94 +416,21 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     /// - Cursor movement fails
     /// - Writing to stdout fails
     /// - Color setting or resetting fails
-    fn draw_info_bar(&self) -> Result<()> {
-        let mut stdout = stdout();
-        let (term_width, term_height) = terminal::size()?;
-        execute!(
-            stdout,
-            crossterm::cursor::MoveTo(0, term_height - 1 - INFO_BAR_Y_LOCATION as u16),
-            terminal::Clear(ClearType::CurrentLine),
-            style::SetBackgroundColor(Color::DarkGrey),
-            style::SetForegroundColor(Color::White),
-        )?;
-
+    fn get_info_bar_content(&self, term_width: usize) -> String {
         let modal_string = format!("{}", self.mode);
         let pos_string = format!("{}", self.pos());
 
-        print!(
-            "{}{}",
-            " ".repeat(INFO_BAR_MODAL_INDICATOR_X_LOCATION),
-            modal_string
-        );
-
-        let middle_space = term_width as usize
+        let middle_space = term_width
             - INFO_BAR_MODAL_INDICATOR_X_LOCATION
             - modal_string.len()
             - pos_string.len()
             - INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE;
 
-        print!("{}{}", " ".repeat(middle_space), pos_string,);
-
-        print!(
-            "{}",
-            " ".repeat(INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE)
-        );
-
-        stdout.flush()?;
-        execute!(stdout, style::ResetColor)?;
-        Ok(())
+        format!("{}{}{}{}", modal_string, " ".repeat(middle_space), pos_string, " ".repeat(INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE))
     }
 
-    fn draw_command_bar(&mut self) -> Result<bool> {
-        let mut stdout = stdout();
-        let (term_width, term_height) = terminal::size()?;
-        execute!(
-            stdout,
-            crossterm::cursor::MoveTo(0, term_height - 1 - NOTIFICATION_BAR_Y_LOCATION as u16),
-            terminal::Clear(ClearType::CurrentLine),
-            style::SetForegroundColor(Color::White),
-        )?;
-        self.push(':');
-
-        loop {
-            self.move_cursor()?;
-
-            if let Event::Key(key_event) = event::read()? {
-                match key_event.code {
-                    KeyCode::Char(c) => self.push(c),
-                    KeyCode::Enter => break,
-                    KeyCode::Backspace => self.delete(),
-                    KeyCode::Left => self.if_within_bounds(Cursor::bump_left),
-                    KeyCode::Right => self.if_within_bounds(Cursor::bump_right),
-                    KeyCode::Up => self.if_within_bounds(Cursor::bump_up),
-                    KeyCode::Down => self.if_within_bounds(Cursor::bump_down),
-                    KeyCode::Esc => {
-                        self.set_mode(Modal::Normal);
-                        break;
-                    }
-                    _ => {
-                        bar_dbg!("nothing");
-                    }
-                }
-            };
-        }
-
-        let msg = self.buffer.get_entire_text().join("");
-        print!("{}{}", " ".repeat(NOTIFICATION_BAR_TEXT_X_LOCATION), msg);
-
-        let remaining_width = term_width as usize - msg.len() - NOTIFICATION_BAR_TEXT_X_LOCATION;
-        print!("{:width$}", "", width = remaining_width);
-
-        stdout.flush()?;
-
-        execute!(stdout, style::ResetColor)?;
-        match msg.as_str() {
-            ":q" => return Ok(true),
-            "/PLACEHOLDER" => return Ok(false),
-            _ => {}
-        }
-
-        Ok(false)
+    fn get_command_bar_content(&self) -> String {
+        self.buffer.get_command_text()[0].to_string()
     }
 }
 
