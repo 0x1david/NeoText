@@ -68,6 +68,7 @@ pub trait TextBuffer {
     /// Get maximum column bound for the current buffer
     fn max_col(&self, at: LineCol) -> usize;
     fn is_command_empty(&self) -> bool;
+    fn clear_command(&mut self);
 }
 
 /// Error type for buffer operations
@@ -181,6 +182,10 @@ impl VecBuffer {
 }
 
 impl TextBuffer for VecBuffer {
+    fn clear_command(&mut self) {
+        self.command.clear();
+        self.command.push(String::default())
+    }
     fn is_command_empty(&self) -> bool {
         self.command[0].is_empty()
     }

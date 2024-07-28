@@ -184,6 +184,9 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         terminal::enable_raw_mode()?;
 
         loop {
+            if !matches!(self.mode, Modal::Command) {
+            self.buffer.clear_command();
+            }
             let _ = match self.mode {
                 Modal::Normal => self.run_normal(),
                 Modal::Find => self.run_find(),
@@ -199,6 +202,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                             "/EXIT NOW" => exit(0),
                             _ => {}
                         };
+                        self.set_mode(Modal::Normal)
                     }
                     Ok(())
                 }
@@ -228,7 +232,6 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                 KeyCode::Right => self.if_within_bounds(Cursor::bump_right),
                 KeyCode::Up => self.if_within_bounds(Cursor::bump_up),
                 KeyCode::Down => self.if_within_bounds(Cursor::bump_down),
-                KeyCode::Esc => self.set_mode(Modal::Normal),
                 _ => {
                     bar_dbg!("nothing");
                 }
@@ -244,7 +247,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         draw_bar(&INFO_BAR, |term_width, _| {
             self.get_info_bar_content(term_width)
         })?;
-        draw_bar(&COMMAND_BAR, |_, _| self.get_command_bar_content())?;
+        draw_bar(&COMMAND_BAR, |_, _| self.buffer.get_command_text()[0].to_string())?;
         let (_, term_height) = terminal::size()?;
         self.move_command_cursor(term_height)?;
 
@@ -435,9 +438,6 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         )
     }
 
-    fn get_command_bar_content(&self) -> String {
-        self.buffer.get_command_text()[0].to_string()
-    }
 }
 
 //     fn insert_char(&mut self, c: char) {
