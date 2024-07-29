@@ -8,8 +8,15 @@ pub enum Modal {
     Normal,
     Insert,
     Visual,
-    Find,
+    Find(FindMode),
     Command,
+}
+
+#[derive(Default, Debug, PartialEq, Clone, Copy)]
+pub enum FindMode {
+    #[default]
+    Forwards,
+    Backwards,
 }
 
 impl Modal {
@@ -23,7 +30,7 @@ impl Modal {
 impl Display for Modal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let disp = match &self {
-            Self::Find => "FIND",
+            Self::Find(_) => "FIND",
             Self::Normal => "NORMAL",
             Self::Command => "COMMAND",
             Self::Insert => "INSERT",
