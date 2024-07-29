@@ -150,6 +150,9 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     fn pos(&self) -> LineCol {
         self.cursor.pos
     }
+    fn last_normal_pos(&self) -> LineCol {
+        self.cursor.last_text_mode_pos
+    }
     fn set_mode(&mut self, modal: Modal) {
         self.cursor.mod_change(&modal);
         self.buffer.set_plane(&modal);
@@ -163,7 +166,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     fn delete(&mut self) {
         match self.buffer.delete(self.pos()) {
             Ok(new_pos) => self.go(new_pos),
-            Err(BufferError::InvalidPosition) => panic!("Cursor found in a position it should never appear in, please contact the developers."),
+            Err(BufferError::InvalidPosition) => panic!("Cursor found in a position it should never appear in: ({}), please contact the developers.", self.pos()),
             Err(BufferError::ImATeacup) => {}
             Err(_) => panic!("UnexpectedError, please contact the developers.")
         }
@@ -171,7 +174,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     fn push(&mut self, c: char) {
         match self.buffer.insert(self.pos(), c) {
             Ok(new_pos) => self.go(new_pos),
-            Err(BufferError::InvalidPosition) => panic!("Cursor found in a position it should never appear in, please contact the developers."),
+            Err(BufferError::InvalidPosition) => panic!("Cursor found in a position it should never appear in: ({}), please contact the developers.", self.pos()),
             Err(BufferError::ImATeacup) => {}
             Err(_) => panic!("UnexpectedError, please contact the developers.")
         }
@@ -215,7 +218,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         terminal::enable_raw_mode()?;
 
         loop {
-            if !matches!(self.mode, Modal::Command) {
+            if (self.mode != Modal::Command) && (self.mode != Modal::Find) {
                 self.buffer.clear_command();
             }
             let _ = match self.mode {
@@ -226,18 +229,16 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                     }
                     if self.run_command()? {
                         let pattern = &self.buffer.get_command_text()[0][1..];
-                        match self.buffer.find(pattern, self.pos()) {
+                        match self.buffer.find(pattern, self.last_normal_pos()) {
                             Err(BufferError::InvalidInput) => notif_bar!("Empty find query.";),
                             Err(BufferError::PatternNotFound) => notif_bar!("No matches found for your pattern";),
-                            Err(_) => panic!("Unexpected pattern returned from find"),
-                            Ok(linecol) => self.go(linecol)
+                            Err(_) => panic!("Unexpected error returned from find. Please contact the developers."),
+                            Ok(linecol) => self.cursor.last_text_mode_pos = linecol
                         }
-
-                        
                         self.set_mode(Modal::Normal)
                     }
                     Ok(())
-                },
+                }
                 Modal::Insert => self.run_insert(),
                 Modal::Visual => self.run_visual(),
                 Modal::Command => {

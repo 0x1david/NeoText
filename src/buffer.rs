@@ -277,7 +277,7 @@ impl TextBuffer for VecBuffer {
         if query.is_empty() {
             return Err(BufferError::InvalidInput);
         }
-        self.get_buffer()
+        self.get_normal_text()
             .iter()
             .enumerate()
             .skip(at.line)
@@ -324,7 +324,7 @@ impl TextBuffer for VecBuffer {
             return Err(BufferError::InvalidInput);
         }
 
-        self.get_buffer()
+        self.get_normal_text()
             .iter()
             .enumerate()
             .take(at.line + 1)
@@ -415,15 +415,13 @@ impl TextBuffer for VecBuffer {
             Ok(buffer[from.line..=to.line]
                 .iter()
                 .enumerate()
-                .map(|(i, line)| {
-                    match i {
-                        0 => line[from.col..].to_string(),
-                        i if i == to.line - from.line => line[..to.col].to_string(),
-                        _ => line.to_string()
-                    }
+                .map(|(i, line)| match i {
+                    0 => line[from.col..].to_string(),
+                    i if i == to.line - from.line => line[..to.col].to_string(),
+                    _ => line.to_string(),
                 })
-                .collect::<Vec<_>>().join("\n")
-            )
+                .collect::<Vec<_>>()
+                .join("\n"))
         }
     }
     /// Replaces a range of text in the buffer with new text.
@@ -1328,41 +1326,6 @@ mod tests {
         assert_eq!(buffer.text, vec!["Normal text"]);
         buffer.set_plane(&Modal::Command);
         assert_eq!(buffer.command, vec!["Command text"]);
-    }
-
-    #[test]
-    fn test_find_across_buffers() {
-        let mut buffer = VecBuffer::default();
-
-        // Insert text in Normal mode
-        buffer.set_plane(&Modal::Normal);
-        buffer
-            .insert_text(
-                LineCol { line: 0, col: 0 },
-                "Normal text to find".to_string(),
-                false,
-            )
-            .unwrap();
-
-        // Insert text in Command mode
-        buffer.set_plane(&Modal::Command);
-        buffer
-            .insert_text(
-                LineCol { line: 0, col: 0 },
-                "Command text to find".to_string(),
-                false,
-            )
-            .unwrap();
-
-        // Find in Normal mode
-        buffer.set_plane(&Modal::Normal);
-        let result = buffer.find("to find", LineCol { line: 0, col: 0 });
-        assert_eq!(result, Ok(LineCol { line: 0, col: 12 }));
-
-        // Find in Command mode
-        buffer.set_plane(&Modal::Command);
-        let result = buffer.find("to find", LineCol { line: 0, col: 0 });
-        assert_eq!(result, Ok(LineCol { line: 0, col: 13 }));
     }
 
     #[test]

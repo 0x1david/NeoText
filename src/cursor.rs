@@ -30,7 +30,7 @@ pub struct Cursor {
     col_max: usize,
     line_max: usize,
     plane: CursorPlane,
-    last_text_mode_pos: LineCol,
+    pub last_text_mode_pos: LineCol,
 }
 
 impl Default for Cursor {
@@ -136,7 +136,7 @@ impl Cursor {
         match modal {
             Modal::Command => {
                 self.plane = CursorPlane::CommandBar;
-                self.pos = dbg!(LineCol { line: 0, col: 0 });
+                self.pos = LineCol { line: 0, col: 0 };
             }
             Modal::Find => {
                 self.plane = CursorPlane::CommandBar;
