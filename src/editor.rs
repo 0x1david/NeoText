@@ -30,36 +30,47 @@ pub fn get_debug_messages() -> &'static Mutex<VecDeque<String>> {
     DEBUG_MESSAGES.get_or_init(|| Mutex::new(VecDeque::new()))
 }
 
-/// A macro for debugging that logs expressions and their values to an info bar,
-/// similar to the standard `dbg!` macro.
+/// A versatile debugging macro that logs expressions and their values to an info bar,
+/// similar to the standard `dbg!` macro, with additional flexibility.
 ///
 /// This macro captures the file name and line number where it's invoked,
 /// evaluates the given expression(s), formats a debug message, and adds it
-/// to a global debug message queue. It then returns the value of the expression,
-/// allowing it to be used inline in code.
+/// to a global debug message queue. It can either return the value of the expression
+/// or not, depending on how it's used.
 ///
 /// # Features
 /// - Logs the file name and line number of the macro invocation
 /// - Logs the expression as a string and its evaluated value
 /// - Can handle multiple expressions
-/// - Returns the value of the expression, allowing inline use
+/// - Optionally returns the value of the expression, allowing inline use
 /// - Maintains a queue of the last 10 debug messages
+/// - Behavior changes based on the presence or absence of a trailing semicolon
 ///
 /// # Usage
 /// ```
-/// let x = bar_dbg!(5 + 3);  // Logs and returns 8
-/// let (a, b) = bar_dbg!(1, "two");  // Logs and returns (1, "two")
+/// let x = notif_bar!(5 + 3);  // Logs and returns 8
+/// notif_bar!(5 + 3);  // Logs without returning
+/// let (a, b) = notif_bar!(1, "two");  // Logs and returns (1, "two")
+/// notif_bar!(1, "two");  // Logs multiple values without returning
 /// ```
 ///
+/// # Syntax
+/// - `notif_bar!(expr)` - Logs and returns the value of `expr`
+/// - `notif_bar!(expr);` - Logs the value of `expr` without returning
+/// - `notif_bar!(expr1, expr2, ...)` - Logs and returns multiple values as a tuple
+/// - `notif_bar!(expr1, expr2, ...);` - Logs multiple values without returning
+///
 /// # Notes
-/// - The expression must implement the `Debug` trait for proper formatting
+/// - The expression(s) must implement the `Debug` trait for proper formatting
 /// - If the debug message queue exceeds 10 messages, the oldest message is removed
+/// - The presence or absence of a trailing semicolon determines whether the macro returns a value
 ///
 /// # Panics
 /// This macro will not panic, but it may fail silently if it cannot acquire
-/// the lock on the debug message queue.
+/// the lock on the debug message queue.the debug message queue.
 #[macro_export]
-macro_rules! bar_dbg {
+macro_rules! notif_bar {
+    // Version that returns the value (no semicolon)
     ($val:expr) => {{
         let file = file!();
         let line = line!();
@@ -73,8 +84,28 @@ macro_rules! bar_dbg {
         }
         val
     }};
+
+    // Version that doesn't return the value (with semicolon)
+    ($val:expr;) => {{
+        let file = file!();
+        let line = line!();
+        let message = format!("[{}:{}] {} = {:?}", file, line, stringify!($val), &$val);
+        if let Ok(mut messages) = get_debug_messages().lock() {
+            messages.push_back(message);
+            if messages.len() > 10 {
+                messages.pop_front();
+            }
+        }
+    }};
+
+    // Multiple arguments version (no semicolon)
     ($($val:expr),+ $(,)?) => {
-        ($(debug_info!($val)),+,)
+        ($(notif_bar!($val)),+,)
+    };
+
+    // Multiple arguments version (with semicolon)
+    ($($val:expr),+ $(,)?;) => {
+        $(notif_bar!($val;))+
     };
 }
 
@@ -189,7 +220,24 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
             }
             let _ = match self.mode {
                 Modal::Normal => self.run_normal(),
-                Modal::Find => self.run_find(),
+                Modal::Find => {
+                    if self.buffer.is_command_empty() {
+                        self.push('/')
+                    }
+                    if self.run_command()? {
+                        let pattern = &self.buffer.get_command_text()[0][1..];
+                        match self.buffer.find(pattern, self.pos()) {
+                            Err(BufferError::InvalidInput) => notif_bar!("Empty find query.";),
+                            Err(BufferError::PatternNotFound) => notif_bar!("No matches found for your pattern";),
+                            Err(_) => panic!("Unexpected pattern returned from find"),
+                            Ok(linecol) => self.go(linecol)
+                        }
+
+                        
+                        self.set_mode(Modal::Normal)
+                    }
+                    Ok(())
+                },
                 Modal::Insert => self.run_insert(),
                 Modal::Visual => self.run_visual(),
                 Modal::Command => {
@@ -208,11 +256,10 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                 }
             };
         }
-
         Ok(())
     }
 
-    fn run_find(&mut self) -> Result<()> {
+    fn run_visual(&mut self) -> Result<()> {
         unimplemented!()
     }
     fn run_insert(&mut self) -> Result<()> {
@@ -234,14 +281,11 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                 KeyCode::Up => self.if_within_bounds(Cursor::bump_up),
                 KeyCode::Down => self.if_within_bounds(Cursor::bump_down),
                 _ => {
-                    bar_dbg!("nothing");
+                    notif_bar!("nothing");
                 }
             }
         };
         Ok(())
-    }
-    fn run_visual(&mut self) -> Result<()> {
-        unimplemented!()
     }
     fn run_command(&mut self) -> Result<bool> {
         self.draw_rows()?;
@@ -265,7 +309,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                     self.set_mode(Modal::Normal);
                 }
                 _ => {
-                    bar_dbg!("nothing");
+                    notif_bar!("nothing";)
                 }
             }
         };
@@ -288,19 +332,20 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                         self.newline()
                     }
                     ':' => self.set_mode(Modal::Command),
+                    '/' => self.set_mode(Modal::Find),
                     'h' => self.if_within_bounds(Cursor::bump_left),
                     'l' => self.if_within_bounds(Cursor::bump_right),
                     'k' => self.if_within_bounds(Cursor::bump_up),
                     'j' => self.if_within_bounds(Cursor::bump_down),
                     _ => {
-                        bar_dbg!("nothing");
+                        notif_bar!("nothing");
                     }
                 }
             } else {
                 match key_event.code {
                     KeyCode::Esc => exit(0),
                     _ => {
-                        bar_dbg!("nothing");
+                        notif_bar!("nothing");
                     }
                 }
             }
