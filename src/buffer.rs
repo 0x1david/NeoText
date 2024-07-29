@@ -400,7 +400,6 @@ impl TextBuffer for VecBuffer {
     /// ```
     fn get_text(&self, from: LineCol, to: LineCol) -> Result<String, BufferError> {
         let buffer = self.get_buffer();
-
         let start_exceeds_end = from.line > to.line || (from.line == to.line && from.col > to.col);
         let exceeds_file_len = from.line >= buffer.len()
             || to.line >= buffer.len()
@@ -607,8 +606,9 @@ impl TextBuffer for VecBuffer {
     /// This function modifies the buffer's content. After calling this function,
     /// line numbers and column positions after the deleted range may change.
     fn delete_selection(&mut self, from: LineCol, to: LineCol) -> Result<LineCol, BufferError> {
-        if from.line >= self.get_buffer().len()
-            || to.line >= self.get_buffer().len()
+        let buf = self.get_mut_buffer();
+        if from.line >= buf.len()
+            || to.line >= buf.len()
             || (from.line == to.line && from.col > to.col)
             || from.line > to.line
             || from == to
@@ -616,8 +616,8 @@ impl TextBuffer for VecBuffer {
             return Err(BufferError::InvalidRange);
         }
 
-        if from.col == 0 && to.col >= self.get_buffer()[to.line].len() {
-            self.get_mut_buffer().drain(from.line..=to.line);
+        if from.col == 0 && to.col >= buf[to.line].len() {
+            buf.drain(from.line..=to.line);
             return Ok(LineCol {
                 col: to.col,
                 line: from.line,
@@ -625,19 +625,19 @@ impl TextBuffer for VecBuffer {
         }
 
         if from.line == to.line {
-            let line = &mut self.get_mut_buffer()[from.line];
+            let line = &mut buf[from.line];
             if from.col == 0 && to.col >= line.len() {
-                self.get_mut_buffer().remove(from.line);
+                buf.remove(from.line);
             } else if to.col >= line.len() {
                 line.truncate(from.col);
             } else {
                 line.replace_range(from.col..to.col, "");
             }
         } else {
-            let new_last_line = self.get_mut_buffer()[to.line].split_off(to.col);
-            self.get_mut_buffer()[from.line].truncate(from.col);
-            self.get_mut_buffer()[from.line].push_str(&new_last_line);
-            self.get_mut_buffer().drain(from.line + 1..=to.line);
+            let end_line_tail = buf[to.line].split_off(to.col);
+            buf[from.line].truncate(from.col);
+            buf[from.line].push_str(&end_line_tail);
+            buf.drain(from.line + 1..=to.line);
         }
         Ok(LineCol {
             col: to.col,
@@ -660,7 +660,8 @@ impl TextBuffer for VecBuffer {
         &self.terminal[0]
     }
     fn delete(&mut self, mut at: LineCol) -> Result<LineCol, BufferError> {
-        if at.line >= self.get_buffer().len() || at.col > self.get_buffer()[at.line].len() {
+        let buf = self.get_mut_buffer();
+        if at.line >= buf.len() || at.col > buf[at.line].len() {
             return Err(BufferError::InvalidPosition);
         }
         if at.col == 0 {
@@ -668,12 +669,12 @@ impl TextBuffer for VecBuffer {
                 return Err(BufferError::ImATeacup);
             }
 
-            let line_content = self.get_mut_buffer().remove(at.line);
+            let line_content = buf.remove(at.line);
             at.line -= 1;
-            at.col = self.get_buffer()[at.line].len();
-            self.get_mut_buffer()[at.line].push_str(&line_content);
+            at.col = buf[at.line].len();
+            buf[at.line].push_str(&line_content);
         } else {
-            self.get_mut_buffer()[at.line].remove(at.col - 1);
+            buf[at.line].remove(at.col - 1);
             at.col -= 1;
         }
         Ok(at)
