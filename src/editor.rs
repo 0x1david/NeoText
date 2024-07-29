@@ -1,11 +1,12 @@
 use crate::bars::{
     draw_bar, COMMAND_BAR, INFO_BAR, INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE,
     INFO_BAR_MODAL_INDICATOR_X_LOCATION, INFO_BAR_Y_LOCATION, NOTIFICATION_BAR,
-    NOTIFICATION_BAR_Y_LOCATION,
+    NOTIFICATION_BAR_Y_LOCATION, get_debug_messages
 };
 use crate::buffer::{BufferError, TextBuffer};
 use crate::cursor::{Cursor, LineCol};
 use crate::modal::{FindMode, Modal};
+use crate::notif_bar;
 use anyhow::{Context, Result};
 use crossterm::{
     event::{self, Event, KeyCode},
@@ -14,100 +15,9 @@ use crossterm::{
 };
 
 // use crate::modal::Modal;
-use std::collections::VecDeque;
 use std::io::stdout;
 use std::process::exit;
-use std::sync::{Mutex, OnceLock};
 
-static DEBUG_MESSAGES: OnceLock<Mutex<VecDeque<String>>> = OnceLock::new();
-
-/// Retrieves or initializes the global debug message queue.
-///
-/// Returns a static reference to a `Mutex<VecDeque<String>>` which stores
-/// debug messages used by the `bar_dbg!` macro. Initializes the queue
-/// on first call.
-pub fn get_debug_messages() -> &'static Mutex<VecDeque<String>> {
-    DEBUG_MESSAGES.get_or_init(|| Mutex::new(VecDeque::new()))
-}
-
-/// A versatile debugging macro that logs expressions and their values to an info bar,
-/// similar to the standard `dbg!` macro, with additional flexibility.
-///
-/// This macro captures the file name and line number where it's invoked,
-/// evaluates the given expression(s), formats a debug message, and adds it
-/// to a global debug message queue. It can either return the value of the expression
-/// or not, depending on how it's used.
-///
-/// # Features
-/// - Logs the file name and line number of the macro invocation
-/// - Logs the expression as a string and its evaluated value
-/// - Can handle multiple expressions
-/// - Optionally returns the value of the expression, allowing inline use
-/// - Maintains a queue of the last 10 debug messages
-/// - Behavior changes based on the presence or absence of a trailing semicolon
-///
-/// # Usage
-/// ```
-/// let x = notif_bar!(5 + 3);  // Logs and returns 8
-/// notif_bar!(5 + 3);  // Logs without returning
-/// let (a, b) = notif_bar!(1, "two");  // Logs and returns (1, "two")
-/// notif_bar!(1, "two");  // Logs multiple values without returning
-/// ```
-///
-/// # Syntax
-/// - `notif_bar!(expr)` - Logs and returns the value of `expr`
-/// - `notif_bar!(expr);` - Logs the value of `expr` without returning
-/// - `notif_bar!(expr1, expr2, ...)` - Logs and returns multiple values as a tuple
-/// - `notif_bar!(expr1, expr2, ...);` - Logs multiple values without returning
-///
-/// # Notes
-/// - The expression(s) must implement the `Debug` trait for proper formatting
-/// - If the debug message queue exceeds 10 messages, the oldest message is removed
-/// - The presence or absence of a trailing semicolon determines whether the macro returns a value
-///
-/// # Panics
-/// This macro will not panic, but it may fail silently if it cannot acquire
-/// the lock on the debug message queue.the debug message queue.
-#[macro_export]
-macro_rules! notif_bar {
-    // Version that returns the value (no semicolon)
-    ($val:expr) => {{
-        let file = file!();
-        let line = line!();
-        let val = $val;
-        let message = format!("[{}:{}] {} = {:?}", file, line, stringify!($val), &val);
-        if let Ok(mut messages) = get_debug_messages().lock() {
-            messages.push_back(message);
-            if messages.len() > 10 {
-                messages.pop_front();
-            }
-        }
-        val
-    }};
-
-    // Version that doesn't return the value (with semicolon)
-    ($val:expr;) => {{
-        let file = file!();
-        let line = line!();
-        let message = format!("[{}:{}] {} = {:?}", file, line, stringify!($val), &$val);
-        if let Ok(mut messages) = get_debug_messages().lock() {
-            messages.push_back(message);
-            if messages.len() > 10 {
-                messages.pop_front();
-            }
-        }
-    }};
-
-    // Multiple arguments version (no semicolon)
-    ($($val:expr),+ $(,)?) => {
-        ($(notif_bar!($val)),+,)
-    };
-
-    // Multiple arguments version (with semicolon)
-    ($($val:expr),+ $(,)?;) => {
-        $(notif_bar!($val;))+
-    };
-}
 
 /// The main editor is used as the main API for all commands
 pub struct MainEditor<Buff: TextBuffer> {
