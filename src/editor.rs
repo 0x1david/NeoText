@@ -5,7 +5,7 @@ use crate::bars::{
 };
 use crate::buffer::{BufferError, TextBuffer};
 use crate::cursor::{Cursor, LineCol};
-use crate::modal::Modal;
+use crate::modal::{FindMode, Modal};
 use anyhow::{Context, Result};
 use crossterm::{
     event::{self, Event, KeyCode},
@@ -218,18 +218,28 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         terminal::enable_raw_mode()?;
 
         loop {
-            if (self.mode != Modal::Command) && (self.mode != Modal::Find) {
-                self.buffer.clear_command();
+            match self.mode {
+                Modal::Command | Modal::Find(_) => {}
+                _ => self.buffer.clear_command(),
             }
             let _ = match self.mode {
                 Modal::Normal => self.run_normal(),
-                Modal::Find => {
+                Modal::Find(find_mode) => {
                     if self.buffer.is_command_empty() {
-                        self.push('/')
+                        match find_mode {
+                            FindMode::Forwards => self.push('/'),
+                            FindMode::Backwards => self.push('?'),
+                        }
                     }
                     if self.run_command()? {
                         let pattern = &self.buffer.get_command_text()[0][1..];
-                        match self.buffer.find(pattern, self.last_normal_pos()) {
+                        let result = match find_mode {
+                            FindMode::Forwards => self.buffer.find(pattern, self.last_normal_pos()),
+                            FindMode::Backwards => {
+                                self.buffer.rfind(pattern, self.last_normal_pos())
+                            }
+                        };
+                        match result {
                             Err(BufferError::InvalidInput) => notif_bar!("Empty find query.";),
                             Err(BufferError::PatternNotFound) => notif_bar!("No matches found for your pattern";),
                             Err(_) => panic!("Unexpected error returned from find. Please contact the developers."),
@@ -333,7 +343,8 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                         self.newline()
                     }
                     ':' => self.set_mode(Modal::Command),
-                    '/' => self.set_mode(Modal::Find),
+                    '/' => self.set_mode(Modal::Find(FindMode::Forwards)),
+                    '?' => self.set_mode(Modal::Find(FindMode::Backwards)),
                     'h' => self.if_within_bounds(Cursor::bump_left),
                     'l' => self.if_within_bounds(Cursor::bump_right),
                     'k' => self.if_within_bounds(Cursor::bump_up),

@@ -138,7 +138,7 @@ impl Cursor {
                 self.plane = CursorPlane::CommandBar;
                 self.pos = LineCol { line: 0, col: 0 };
             }
-            Modal::Find => {
+            Modal::Find(_) => {
                 self.plane = CursorPlane::CommandBar;
                 self.pos = LineCol { line: 0, col: 0 };
             }

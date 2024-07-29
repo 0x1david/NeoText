@@ -191,7 +191,7 @@ impl TextBuffer for VecBuffer {
     }
     fn set_plane(&mut self, modal: &Modal) {
         self.plane = match modal {
-            Modal::Command | Modal::Find => BufferPlane::Command,
+            Modal::Command | Modal::Find(_) => BufferPlane::Command,
             Modal::Normal | Modal::Insert | Modal::Visual => BufferPlane::Normal,
         };
     }
