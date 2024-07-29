@@ -185,7 +185,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
 
         loop {
             if !matches!(self.mode, Modal::Command) {
-            self.buffer.clear_command();
+                self.buffer.clear_command();
             }
             let _ = match self.mode {
                 Modal::Normal => self.run_normal(),
@@ -227,6 +227,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
             match key_event.code {
                 KeyCode::Char(c) => self.push(c),
                 KeyCode::Enter => self.newline(),
+                KeyCode::Esc => self.set_mode(Modal::Normal),
                 KeyCode::Backspace => self.delete(),
                 KeyCode::Left => self.if_within_bounds(Cursor::bump_left),
                 KeyCode::Right => self.if_within_bounds(Cursor::bump_right),
@@ -247,7 +248,9 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         draw_bar(&INFO_BAR, |term_width, _| {
             self.get_info_bar_content(term_width)
         })?;
-        draw_bar(&COMMAND_BAR, |_, _| self.buffer.get_command_text()[0].to_string())?;
+        draw_bar(&COMMAND_BAR, |_, _| {
+            self.buffer.get_command_text()[0].to_string()
+        })?;
         let (_, term_height) = terminal::size()?;
         self.move_command_cursor(term_height)?;
 
@@ -330,13 +333,11 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
             terminal::Clear(ClearType::All),
             crossterm::cursor::MoveTo(0, 0)
         )?;
-        for (i, line) in self.buffer.get_normal_text().iter().enumerate() {
-            if i >= term_height as usize
-                - 1
-                - (NOTIFICATION_BAR_Y_LOCATION.max(INFO_BAR_Y_LOCATION))
-            {
-                break;
-            }
+
+        let split_line_n =
+            term_height as usize - 1 - (NOTIFICATION_BAR_Y_LOCATION).max(INFO_BAR_Y_LOCATION);
+
+        for line in self.buffer.get_normal_text().iter().take(split_line_n) {
             execute!(stdout, terminal::Clear(ClearType::CurrentLine))?;
             println!("{}\r", line);
         }
@@ -437,7 +438,6 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
             " ".repeat(INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE)
         )
     }
-
 }
 
 //     fn insert_char(&mut self, c: char) {

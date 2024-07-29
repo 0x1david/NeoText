@@ -277,23 +277,19 @@ impl TextBuffer for VecBuffer {
         if query.is_empty() {
             return Err(BufferError::InvalidInput);
         }
-        let mut current_line = at.line;
-        let mut current_col = at.col;
-
-        while current_line < self.get_buffer().len() {
-            if let Some(line) = self.get_buffer().get(current_line) {
-                if let Some(pos) = line[current_col..].find(query) {
-                    return Ok(LineCol {
-                        line: current_line,
-                        col: current_col + pos,
-                    });
-                }
-            }
-            current_line += 1;
-            current_col = 0;
-        }
-
-        Err(BufferError::PatternNotFound)
+        self.get_buffer()
+            .iter()
+            .enumerate()
+            .skip(at.line)
+            .flat_map(|(line_num, line)| {
+                let start_col = if line_num == at.line { at.col } else { 0 };
+                line[start_col..].find(query).map(|col| LineCol {
+                    line: line_num,
+                    col: start_col + col,
+                })
+            })
+            .next()
+            .ok_or(BufferError::PatternNotFound)
     }
 
     /// Searches backwards for a query string in the buffer, starting from a given position.
@@ -327,26 +323,25 @@ impl TextBuffer for VecBuffer {
         if query.is_empty() {
             return Err(BufferError::InvalidInput);
         }
-        let mut current_line = at.line;
-        let mut current_col = at.col;
 
-        loop {
-            if let Some(line) = self.get_buffer().get(current_line) {
-                if let Some(pos) = line[..current_col].rfind(query) {
-                    return Ok(LineCol {
-                        line: current_line,
-                        col: pos,
-                    });
-                }
-            }
-            if current_line == 0 {
-                break;
-            }
-            current_line -= 1;
-            current_col = self.get_buffer()[current_line].len();
-        }
-
-        Err(BufferError::PatternNotFound)
+        self.get_buffer()
+            .iter()
+            .enumerate()
+            .take(at.line + 1)
+            .rev()
+            .flat_map(|(line_num, line)| {
+                let end_col = if line_num == at.line {
+                    at.col
+                } else {
+                    line.len()
+                };
+                line[..end_col].rfind(query).map(|col| LineCol {
+                    line: line_num,
+                    col,
+                })
+            })
+            .next()
+            .ok_or(BufferError::PatternNotFound)
     }
 
     fn len(&self) -> usize {
@@ -404,32 +399,33 @@ impl TextBuffer for VecBuffer {
     /// }
     /// ```
     fn get_text(&self, from: LineCol, to: LineCol) -> Result<String, BufferError> {
+        let buffer = self.get_buffer();
+
         let start_exceeds_end = from.line > to.line || (from.line == to.line && from.col > to.col);
-        let exceeds_file_len = from.line >= self.get_buffer().len()
-            || to.line >= self.get_buffer().len()
-            || from.col > self.get_buffer()[from.line].len()
-            || to.col > self.get_buffer()[to.line].len();
+        let exceeds_file_len = from.line >= buffer.len()
+            || to.line >= buffer.len()
+            || from.col > buffer[from.line].len()
+            || to.col > buffer[to.line].len();
         if start_exceeds_end || exceeds_file_len {
             return Err(BufferError::InvalidRange);
         }
 
-        let mut result = String::new();
-
         if from.line == to.line {
-            result.push_str(&self.get_buffer()[from.line][from.col..to.col]);
+            Ok(buffer[from.line][from.col..to.col].to_string())
         } else {
-            result.push_str(&self.get_buffer()[from.line][from.col..]);
-            result.push('\n');
-
-            for line in &self.get_buffer()[from.line + 1..to.line] {
-                result.push_str(line);
-                result.push('\n');
-            }
-
-            result.push_str(&self.get_buffer()[to.line][..to.col]);
+            Ok(buffer[from.line..=to.line]
+                .iter()
+                .enumerate()
+                .map(|(i, line)| {
+                    match i {
+                        0 => line[from.col..].to_string(),
+                        i if i == to.line - from.line => line[..to.col].to_string(),
+                        _ => line.to_string()
+                    }
+                })
+                .collect::<Vec<_>>().join("\n")
+            )
         }
-
-        Ok(result)
     }
     /// Replaces a range of text in the buffer with new text.
     ///
