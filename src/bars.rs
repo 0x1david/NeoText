@@ -54,7 +54,7 @@ pub fn get_debug_messages() -> &'static Mutex<VecDeque<String>> {
 /// This macro captures the file name and line number where it's invoked,
 /// evaluates the given expression(s), formats a debug message, and adds it
 /// to a global debug message queue. It can either return the value of the expression
-/// or not, depending on how it's used.
+/// or not, depending on whether the element list is ended with semicolon or not.
 ///
 /// # Features
 /// - Logs the file name and line number of the macro invocation
@@ -67,16 +67,10 @@ pub fn get_debug_messages() -> &'static Mutex<VecDeque<String>> {
 /// # Usage
 /// ```
 /// let x = notif_bar!(5 + 3);  // Logs and returns 8
-/// notif_bar!(5 + 3);  // Logs without returning
+/// notif_bar!(5 + 3;)  // Logs without returning
 /// let (a, b) = notif_bar!(1, "two");  // Logs and returns (1, "two")
-/// notif_bar!(1, "two");  // Logs multiple values without returning
+/// notif_bar!(1, "two";)  // Logs multiple values without returning
 /// ```
-///
-/// # Syntax
-/// - `notif_bar!(expr)` - Logs and returns the value of `expr`
-/// - `notif_bar!(expr);` - Logs the value of `expr` without returning
-/// - `notif_bar!(expr1, expr2, ...)` - Logs and returns multiple values as a tuple
-/// - `notif_bar!(expr1, expr2, ...);` - Logs multiple values without returning
 ///
 /// # Notes
 /// - The expression(s) must implement the `Debug` trait for proper formatting
