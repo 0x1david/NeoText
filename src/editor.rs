@@ -1,7 +1,7 @@
 use crate::bars::{
-    draw_bar, COMMAND_BAR, INFO_BAR, INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE,
-    INFO_BAR_MODAL_INDICATOR_X_LOCATION, INFO_BAR_Y_LOCATION, NOTIFICATION_BAR,
-    NOTIFICATION_BAR_Y_LOCATION, get_debug_messages
+    draw_bar, get_debug_messages, COMMAND_BAR, INFO_BAR,
+    INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE, INFO_BAR_MODAL_INDICATOR_X_LOCATION,
+    INFO_BAR_Y_LOCATION, NOTIFICATION_BAR, NOTIFICATION_BAR_Y_LOCATION,
 };
 use crate::buffer::{BufferError, TextBuffer};
 use crate::cursor::{Cursor, LineCol};
@@ -17,7 +17,6 @@ use crossterm::{
 // use crate::modal::Modal;
 use std::io::stdout;
 use std::process::exit;
-
 
 /// The main editor is used as the main API for all commands
 pub struct MainEditor<Buff: TextBuffer> {

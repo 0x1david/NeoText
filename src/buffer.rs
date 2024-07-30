@@ -1,4 +1,4 @@
-use crate::{cursor::LineCol, modal::Modal};
+use crate::{cursor::LineCol, modal::Modal, searcher::Pattern};
 use std::collections::VecDeque;
 
 /// Trait defining the interface for a text buffer
@@ -42,11 +42,14 @@ pub trait TextBuffer {
     /// Get the contents of a specific line
     fn line(&self, line_number: usize) -> Result<&str, BufferError>;
 
+    // In future versions Find should be adjusted to take a self-defined Pattern type much like
+    // https://doc.rust-lang.org/std/str/pattern/trait.Pattern.html
+    // with the goal of allowing accepting all necessary types - closures, Regex, chars, and strs
     /// Find the next occurrence of a substring
-    fn find(&self, query: &str, at: LineCol) -> Result<LineCol, BufferError>;
+    fn find(&self, query: impl Pattern, at: LineCol) -> Result<LineCol, BufferError>;
 
     /// Find the previous occurrence of a substring
-    fn rfind(&self, query: &str, at: LineCol) -> Result<LineCol, BufferError>;
+    fn rfind(&self, query: impl AsRef<str>, at: LineCol) -> Result<LineCol, BufferError>;
 
     /// Undo the last operation
     fn undo(&mut self, at: LineCol) -> Result<LineCol, BufferError>;
@@ -55,13 +58,13 @@ pub trait TextBuffer {
     fn redo(&mut self, at: LineCol) -> Result<LineCol, BufferError>;
 
     /// Get the entire text for the current buffer
-    fn get_entire_text(&self) -> &Vec<String>;
+    fn get_entire_text(&self) -> &[String];
     /// Get the entire text for the normal buffer
-    fn get_normal_text(&self) -> &Vec<String>;
+    fn get_normal_text(&self) -> &[String];
     /// Get the entire text for the terminal buffer
     fn get_terminal_text(&self) -> &str;
     /// Get the entire text for the command buffer
-    fn get_command_text(&self) -> &Vec<String>;
+    fn get_command_text(&self) -> &[String];
 
     /// Get maximum line bound for the current buffer
     fn max_line(&self) -> usize;
@@ -69,6 +72,7 @@ pub trait TextBuffer {
     fn max_col(&self, at: LineCol) -> usize;
     fn is_command_empty(&self) -> bool;
     fn clear_command(&mut self);
+    fn max_linecol(&self) -> LineCol;
 }
 
 /// Error type for buffer operations
@@ -165,6 +169,16 @@ impl Default for VecBuffer {
 }
 
 impl VecBuffer {
+    pub fn new(text: Vec<String>) -> Self {
+        Self {
+            text,
+            terminal: vec!["".to_string()],
+            command: vec!["".to_string()],
+            past: Stack::default(),
+            future: Stack::default(),
+            plane: BufferPlane::Normal,
+        }
+    }
     fn get_mut_buffer(&mut self) -> &mut Vec<String> {
         match &self.plane {
             BufferPlane::Normal => &mut self.text,
@@ -172,12 +186,23 @@ impl VecBuffer {
             BufferPlane::Command => &mut self.command,
         }
     }
-    fn get_buffer(&self) -> &Vec<String> {
+    fn get_buffer(&self) -> &[String] {
         match &self.plane {
             BufferPlane::Normal => &self.text,
             BufferPlane::Terminal => &self.terminal,
             BufferPlane::Command => &self.command,
         }
+    }
+
+    fn get_sliced_buffer(&self, from: Option<LineCol>, to: Option<LineCol>) -> &[String] {
+        let vec = self.get_buffer();
+        let start = from.map(|lc| lc.line).unwrap_or(0);
+        let end = to.map(|lc| lc.line + 1).unwrap_or(vec.len());
+
+        let start = start.min(vec.len());
+        let end = end.min(vec.len());
+
+        &vec[start..end]
     }
 }
 
@@ -200,6 +225,12 @@ impl TextBuffer for VecBuffer {
     }
     fn max_line(&self) -> usize {
         self.get_buffer().len() - 1
+    }
+    fn max_linecol(&self) -> LineCol {
+        let buf = self.get_buffer();
+        let line = buf.len() - 1;
+        let col = buf[line].len();
+        LineCol { line, col }
     }
     fn insert_newline(&mut self, mut at: LineCol) -> LineCol {
         self.get_mut_buffer()
@@ -273,23 +304,19 @@ impl TextBuffer for VecBuffer {
     /// let result = buffer.find("example", LineCol{line: 1, col: 5});
     /// assert_eq!(result, Ok(LineCol{line: 2, col: 10})); // Found on line 2, column 10
     /// ```
-    fn find(&self, query: &str, at: LineCol) -> Result<LineCol, BufferError> {
-        if query.is_empty() {
-            return Err(BufferError::InvalidInput);
-        }
-        self.get_normal_text()
-            .iter()
-            .enumerate()
-            .skip(at.line)
-            .flat_map(|(line_num, line)| {
-                let start_col = if line_num == at.line { at.col } else { 0 };
-                line[start_col..].find(query).map(|col| LineCol {
-                    line: line_num,
-                    col: start_col + col,
-                })
-            })
-            .next()
+    fn find(&self, query: impl Pattern, at: LineCol) -> Result<LineCol, BufferError> {
+        query
+            .find(self.get_sliced_buffer(Some(at), None))
             .ok_or(BufferError::PatternNotFound)
+            .map(|v| {
+                LineCol {line: v.line + at.line, col: {
+                    if v.line == 0 {
+                        v.col + at.col
+                    } else {
+                        v.col
+                    }
+                }
+            }})
     }
 
     /// Searches backwards for a query string in the buffer, starting from a given position.
@@ -319,7 +346,8 @@ impl TextBuffer for VecBuffer {
     /// let result = buffer.rfind("example", LineCol{line: 2, col: 15});
     /// assert_eq!(result, Ok(LineCol{line: 1, col: 5})); // Found on line 1, column 5
     /// ```
-    fn rfind(&self, query: &str, at: LineCol) -> Result<LineCol, BufferError> {
+    fn rfind(&self, query: impl AsRef<str>, at: LineCol) -> Result<LineCol, BufferError> {
+        let query = query.as_ref();
         if query.is_empty() {
             return Err(BufferError::InvalidInput);
         }
@@ -645,13 +673,13 @@ impl TextBuffer for VecBuffer {
     fn is_empty(&self) -> bool {
         self.get_buffer().is_empty()
     }
-    fn get_entire_text(&self) -> &Vec<String> {
+    fn get_entire_text(&self) -> &[String] {
         self.get_buffer()
     }
-    fn get_normal_text(&self) -> &Vec<String> {
+    fn get_normal_text(&self) -> &[String] {
         &self.text
     }
-    fn get_command_text(&self) -> &Vec<String> {
+    fn get_command_text(&self) -> &[String] {
         &self.command
     }
     fn get_terminal_text(&self) -> &str {
@@ -1363,5 +1391,64 @@ mod tests {
         // Verify Normal mode text remains unchanged
         buffer.set_plane(&Modal::Normal);
         assert_eq!(buffer.text, vec![" text"]);
+    }
+    #[test]
+    fn test_get_full_buffer() {
+        let buffer = VecBuffer::new(vec!["Line 1".to_string(), "Line 2".to_string(), "Line 3".to_string()]);
+        assert_eq!(buffer.get_sliced_buffer(None, None), &["Line 1", "Line 2", "Line 3"]);
+    }
+
+    #[test]
+    fn test_get_from_middle() {
+        let buffer = VecBuffer::new(vec!["Line 1".to_string(), "Line 2".to_string(), "Line 3".to_string()]);
+        assert_eq!(
+            buffer.get_sliced_buffer(Some(LineCol { line: 1, col: 0 }), None),
+            &["Line 2", "Line 3"]
+        );
+    }
+
+    #[test]
+    fn test_get_to_middle() {
+        let buffer = VecBuffer::new(vec!["Line 1".to_string(), "Line 2".to_string(), "Line 3".to_string()]);
+        assert_eq!(
+            buffer.get_sliced_buffer(None, Some(LineCol { line: 1, col: 0 })),
+            &["Line 1", "Line 2"]
+        );
+    }
+
+    #[test]
+    fn test_get_slice_in_middle() {
+        let buffer = VecBuffer::new(vec!["Line 1".to_string(), "Line 2".to_string(), "Line 3".to_string(), "Line 4".to_string()]);
+        assert_eq!(
+            buffer.get_sliced_buffer(Some(LineCol { line: 1, col: 0 }), Some(LineCol { line: 2, col: 0 })),
+            &["Line 2", "Line 3"]
+        );
+    }
+
+    #[test]
+    fn test_out_of_bounds() {
+        let buffer = VecBuffer::new(vec!["Line 1".to_string(), "Line 2".to_string()]);
+        assert_eq!(
+            buffer.get_sliced_buffer(Some(LineCol { line: 5, col: 0 }), None),
+            &[] as &[String]
+        );
+    }
+
+    #[test]
+    fn test_from_greater_than_to() {
+        let buffer = VecBuffer::new(vec!["Line 1".to_string(), "Line 2".to_string(), "Line 3".to_string()]);
+        assert_eq!(
+            buffer.get_sliced_buffer(Some(LineCol { line: 2, col: 0 }), Some(LineCol { line: 1, col: 0 })),
+            &[] as &[String]
+        );
+    }
+
+    #[test]
+    fn test_to_beyond_end() {
+        let buffer = VecBuffer::new(vec!["Line 1".to_string(), "Line 2".to_string(), "Line 3".to_string()]);
+        assert_eq!(
+            buffer.get_sliced_buffer(None, Some(LineCol { line: 5, col: 0 })),
+            &["Line 1", "Line 2", "Line 3"]
+        );
     }
 }
