@@ -1,6 +1,7 @@
 use crate::{cursor::LineCol, modal::Modal};
 use std::collections::VecDeque;
 
+
 /// Trait defining the interface for a text buffer
 pub trait TextBuffer {
     fn set_plane(&mut self, modal: &Modal);
@@ -42,6 +43,9 @@ pub trait TextBuffer {
     /// Get the contents of a specific line
     fn line(&self, line_number: usize) -> Result<&str, BufferError>;
 
+    // In future versions Find should be adjusted to take a self-defined Pattern type much like
+    // https://doc.rust-lang.org/std/str/pattern/trait.Pattern.html
+    // with the goal of allowing accepting all necessary types - closures, Regex, chars, and strs
     /// Find the next occurrence of a substring
     fn find(&self, query: &str, at: LineCol) -> Result<LineCol, BufferError>;
 
@@ -164,7 +168,18 @@ impl Default for VecBuffer {
     }
 }
 
+
 impl VecBuffer {
+    pub fn new(text: Vec<String>) -> Self {
+        Self {
+            text,
+            terminal: vec!["".to_string()],
+            command: vec!["".to_string()],
+            past: Stack::default(),
+            future: Stack::default(),
+            plane: BufferPlane::Normal,
+        }
+    }
     fn get_mut_buffer(&mut self) -> &mut Vec<String> {
         match &self.plane {
             BufferPlane::Normal => &mut self.text,

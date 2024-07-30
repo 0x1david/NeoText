@@ -55,6 +55,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
             self.cursor.set_col(max_col);
         }
     }
+    
 
     #[inline]
     fn pos(&self) -> LineCol {
@@ -109,6 +110,9 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
             mode: Modal::default(),
         }
     }
+
+        
+    
 
     /// Runs the main editor loop.
     ///
