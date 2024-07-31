@@ -1,4 +1,8 @@
-use std::{collections::VecDeque, io::{stdout, Write}, sync::{Mutex, OnceLock}};
+use std::{
+    collections::VecDeque,
+    io::{stdout, Write},
+    sync::{Mutex, OnceLock},
+};
 
 use anyhow::Result;
 use crossterm::{
@@ -35,7 +39,6 @@ pub const COMMAND_BAR: BarInfo = BarInfo::new(
     DEFAULT_FG,
     DEFAULT_BG,
 );
-
 
 static DEBUG_MESSAGES: OnceLock<Mutex<VecDeque<String>>> = OnceLock::new();
 
