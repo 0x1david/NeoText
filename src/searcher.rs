@@ -12,6 +12,8 @@
 // So essentially what I need is for each type to implement a function that takes a Vec<AsRef<str>>
 // and returns a LineCol
 
+use std::borrow::Cow;
+
 use crate::cursor::LineCol;
 
 pub trait Pattern {
@@ -22,21 +24,19 @@ pub trait Pattern {
     ///        first line of the search (if returned linecol.line equals the cursor position)
     ///
     /// Thus find and rfind will require to be split at the cursor
-    fn find(self, haystack: &[impl AsRef<str>]) -> Option<LineCol>;
+    fn find_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol>;
 }
 
-impl<T> Pattern for T
-where
-    T: AsRef<str>,
+impl Pattern for &str
 {
-    fn find(self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+    fn find_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
         haystack
             .iter()
             .enumerate()
             .find_map(|(line_num, line_content)| {
                 line_content
                     .as_ref()
-                    .find(self.as_ref())
+                    .find(self)
                     .map(|col| LineCol {
                         line: line_num,
                         col,
@@ -45,22 +45,48 @@ where
     }
 }
 
-
-pub struct FnSearcher<F>( pub F );
-
-impl<F> Pattern for FnSearcher<F>
+impl<F> Pattern for F
 where
     F: Fn(&str) -> Option<usize>,
 {
-    fn find(self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+    fn find_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
         haystack
             .iter()
             .enumerate()
             .find_map(|(line_num, line_content)| {
-                self.0(line_content.as_ref()).map(|col| LineCol {
+                self(line_content.as_ref()).map(|col| LineCol {
                     line: line_num,
-                    col
+                    col,
                 })
+            })
+    }
+}
+
+impl Pattern for String {
+    fn find_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+        self.as_str().find_pattern(haystack)
+    }
+}
+
+impl Pattern for Cow<'_, str> {
+    fn find_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+        self.as_ref().find_pattern(haystack)
+    }
+}
+
+impl Pattern for char {
+    fn find_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+        haystack
+            .iter()
+            .enumerate()
+            .find_map(|(line_num, line_content)| {
+                line_content
+                    .as_ref()
+                    .find(*self)
+                    .map(|col| LineCol {
+                        line: line_num,
+                        col,
+                    })
             })
     }
 }
