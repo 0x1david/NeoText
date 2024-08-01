@@ -3,11 +3,11 @@ use crate::bars::{
     INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE, INFO_BAR_MODAL_INDICATOR_X_LOCATION,
     INFO_BAR_Y_LOCATION, NOTIFICATION_BAR, NOTIFICATION_BAR_Y_LOCATION,
 };
-use crate::buffer::{BufferError, TextBuffer};
+use crate::{Result, Error};
+use crate::buffer::TextBuffer;
 use crate::cursor::{Cursor, LineCol};
 use crate::modal::{FindMode, Modal};
 use crate::notif_bar;
-use anyhow::{Context, Result};
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
@@ -75,16 +75,16 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     fn delete(&mut self) {
         match self.buffer.delete(self.pos()) {
             Ok(new_pos) => self.go(new_pos),
-            Err(BufferError::InvalidPosition) => panic!("Cursor found in a position it should never appear in: ({}), please contact the developers.", self.pos()),
-            Err(BufferError::ImATeacup) => {}
+            Err(Error::InvalidPosition) => panic!("Cursor found in a position it should never appear in: ({}), please contact the developers.", self.pos()),
+            Err(Error::ImATeacup) => {}
             Err(_) => panic!("UnexpectedError, please contact the developers.")
         }
     }
     fn push(&mut self, c: char) {
         match self.buffer.insert(self.pos(), c) {
             Ok(new_pos) => self.go(new_pos),
-            Err(BufferError::InvalidPosition) => panic!("Cursor found in a position it should never appear in: ({}), please contact the developers.", self.pos()),
-            Err(BufferError::ImATeacup) => {}
+            Err(Error::InvalidPosition) => panic!("Cursor found in a position it should never appear in: ({}), please contact the developers.", self.pos()),
+            Err(Error::ImATeacup) => {}
             Err(_) => panic!("UnexpectedError, please contact the developers.")
         }
     }
@@ -149,8 +149,8 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                             }
                         };
                         match result {
-                            Err(BufferError::InvalidInput) => notif_bar!("Empty find query.";),
-                            Err(BufferError::PatternNotFound) => notif_bar!("No matches found for your pattern";),
+                            Err(Error::InvalidInput) => notif_bar!("Empty find query.";),
+                            Err(Error::PatternNotFound) => notif_bar!("No matches found for your pattern";),
                             Err(_) => panic!("Unexpected error returned from find. Please contact the developers."),
                             Ok(linecol) => self.cursor.last_text_mode_pos = linecol
                         }
@@ -188,7 +188,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
             self.get_info_bar_content(term_width)
         })?;
         draw_bar(&NOTIFICATION_BAR, |_, _| self.get_notif_bar_content())?;
-        self.move_cursor()?;
+        self.move_cursor();
 
         if let Event::Key(key_event) = event::read()? {
             match key_event.code {
@@ -216,7 +216,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
             self.buffer.get_command_text()[0].to_string()
         })?;
         let (_, term_height) = terminal::size()?;
-        self.move_command_cursor(term_height)?;
+        self.move_command_cursor(term_height);
 
         if let Event::Key(key_event) = event::read()? {
             match key_event.code {
@@ -241,7 +241,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
             self.get_info_bar_content(term_width)
         })?;
         draw_bar(&NOTIFICATION_BAR, |_, _| self.get_notif_bar_content())?;
-        self.move_cursor()?;
+        self.move_cursor();
 
         if let Event::Key(key_event) = event::read()? {
             if let KeyCode::Char(ch) = key_event.code {
@@ -319,23 +319,21 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     ///
     /// # Errors
     /// This function can return an error if the terminal cursor movement operation fails.
-    fn move_cursor(&self) -> Result<()> {
+    fn move_cursor(&self) {
         execute!(
             stdout(),
             crossterm::cursor::MoveTo(self.cursor.col() as u16, self.cursor.line() as u16)
-        )
-        .context("Failed moving cursor ")
+        );
     }
 
-    fn move_command_cursor(&self, term_size: u16) -> Result<()> {
+    fn move_command_cursor(&self, term_size: u16) {
         execute!(
             stdout(),
             crossterm::cursor::MoveTo(
                 self.cursor.col() as u16,
                 term_size - NOTIFICATION_BAR_Y_LOCATION as u16
             )
-        )
-        .context("Failed moving cursor ")
+        );
     }
 
     /// Draws the notification bar at the bottom of the terminal.

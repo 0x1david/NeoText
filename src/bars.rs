@@ -3,8 +3,7 @@ use std::{
     io::{stdout, Write},
     sync::{Mutex, OnceLock},
 };
-
-use anyhow::Result;
+use crate::Result;
 use crossterm::{
     execute,
     style::{self, Color},

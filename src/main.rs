@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 use std::{io::stdout, path::PathBuf};
 
+mod error;
+use error::{Result, Error};
 use buffer::VecBuffer;
 use crossterm::{
     execute,
