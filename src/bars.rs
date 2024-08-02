@@ -1,13 +1,13 @@
-use std::{
-    collections::VecDeque,
-    io::{stdout, Write},
-    sync::{Mutex, OnceLock},
-};
 use crate::Result;
 use crossterm::{
     execute,
     style::{self, Color},
     terminal::{self, ClearType},
+};
+use std::{
+    collections::VecDeque,
+    io::{stdout, Write},
+    sync::{Mutex, OnceLock},
 };
 
 pub const INFO_BAR_Y_LOCATION: usize = 1;
@@ -161,7 +161,9 @@ where
     let content = content_generator(term_width as usize, term_height as usize);
     print!("{}{}", " ".repeat(bar.x_padding), content);
 
-    let remaining_width = (term_width as usize).saturating_sub(content.len()).saturating_sub(bar.x_padding);
+    let remaining_width = (term_width as usize)
+        .saturating_sub(content.len())
+        .saturating_sub(bar.x_padding);
     print!("{}", " ".repeat(remaining_width));
     stdout.flush()?;
     execute!(stdout, style::ResetColor)?;

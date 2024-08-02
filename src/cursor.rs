@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, fmt::Display};
 
-use crate::{modal::Modal, notif_bar, get_debug_messages};
+use crate::{get_debug_messages, modal::Modal, notif_bar};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct LineCol {
@@ -162,6 +162,7 @@ enum CursorPlane {
 }
 impl CursorPlane {
     fn text(&self) -> bool {
+        #[allow(clippy::match_like_matches_macro)]
         match &self {
             Self::Text => true,
             _ => false,

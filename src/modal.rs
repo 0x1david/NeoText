@@ -20,11 +20,6 @@ pub enum FindMode {
 }
 
 impl Modal {
-    /// The null command is for implementation on bindings that have no associated commands for a
-    /// given modal.
-    fn null(&self) -> Result<()> {
-        Ok(())
-    }
 }
 
 impl Display for Modal {
@@ -36,6 +31,6 @@ impl Display for Modal {
             Self::Insert => "INSERT",
             Self::Visual => "VISUAL",
         };
-        write!(f, "{}", disp)
+        write!(f, "{disp}")
     }
 }

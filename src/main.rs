@@ -2,7 +2,6 @@
 use std::{io::stdout, path::PathBuf};
 
 mod error;
-use error::{Result, Error};
 use bars::get_debug_messages;
 use buffer::VecBuffer;
 use crossterm::{
@@ -10,6 +9,7 @@ use crossterm::{
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use editor::MainEditor;
+use error::{Error, Result};
 
 mod bars;
 mod buffer;
