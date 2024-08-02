@@ -3,6 +3,7 @@ use std::{io::stdout, path::PathBuf};
 
 mod error;
 use error::{Result, Error};
+use bars::get_debug_messages;
 use buffer::VecBuffer;
 use crossterm::{
     execute,

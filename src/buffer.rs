@@ -1,4 +1,4 @@
-use crate::{cursor::LineCol, modal::Modal, searcher::Pattern};
+use crate::{get_debug_messages, cursor::LineCol, modal::Modal, notif_bar, searcher::Pattern};
 use std::collections::VecDeque;
 use crate::{Result, Error};
 
@@ -184,16 +184,27 @@ impl VecBuffer {
         }
     }
 
-    fn get_sliced_buffer(&self, from: Option<LineCol>, to: Option<LineCol>) -> &[String] {
-        let vec = self.get_buffer();
-        let start = from.map(|lc| lc.line).unwrap_or(0);
-        let end = to.map(|lc| lc.line + 1).unwrap_or(vec.len());
+    fn get_partial_buffer(&self, from: Option<LineCol>, to: Option<LineCol>) -> Result<Vec<String>> {
+        if from.is_none() && to.is_none() {
+            return Ok(self.get_normal_text().to_owned());
+        } 
+        let from = from.unwrap_or(LineCol { line: 0, col: 0 });
+        let to = to.unwrap_or_else(|| self.max_linecol());
+        if from.line > to.line || (from.line == to.line && from.col > to.col) {
+            return Err(Error::InvalidInput);
+        }
+        let mut vec = self.get_normal_text()[from.line..=to.line].to_owned();
+        vec[0] = vec[0][from.col..].to_string();
+        let last = vec.len() - 1;
+        if from.line == to.line {
+            vec[last] = vec[last][..to.col - from.col].to_string();
+        } else {
+            vec[last].truncate(to.col);
+        }
 
-        let start = start.min(vec.len());
-        let end = end.min(vec.len());
-
-        &vec[start..end]
+        Ok(vec)
     }
+        
 }
 
 impl TextBuffer for VecBuffer {
@@ -217,7 +228,7 @@ impl TextBuffer for VecBuffer {
         self.get_buffer().len() - 1
     }
     fn max_linecol(&self) -> LineCol {
-        let buf = self.get_buffer();
+        let buf = self.get_normal_text();
         let line = buf.len() - 1;
         let col = buf[line].len();
         LineCol { line, col }
@@ -296,11 +307,14 @@ impl TextBuffer for VecBuffer {
     /// ```
     fn find(&self, query: impl Pattern, at: LineCol) -> Result<LineCol> {
         query
-            .find_pattern(self.get_sliced_buffer(Some(at), None))
+            .find_pattern(&self.get_partial_buffer(Some(at), None)?)
             .ok_or(Error::PatternNotFound)
             .map(|v| {
-                LineCol {line: v.line + at.line, col: { v.col }
-            }})
+                LineCol {
+                    line: v.line + at.line, 
+                    col: if v.line == 0 {v.col + at.col} else {v.col}
+            }}
+        )
     }
 
     /// Searches backwards for a query string in the buffer, starting from a given position.
@@ -1253,63 +1267,127 @@ mod tests {
         buffer.set_plane(&Modal::Normal);
         assert_eq!(buffer.text, vec![" text"]);
     }
-    #[test]
-    fn test_get_full_buffer() {
-        let buffer = VecBuffer::new(vec!["Line 1".to_string(), "Line 2".to_string(), "Line 3".to_string()]);
-        assert_eq!(buffer.get_sliced_buffer(None, None), &["Line 1", "Line 2", "Line 3"]);
-    }
 
     #[test]
-    fn test_get_from_middle() {
-        let buffer = VecBuffer::new(vec!["Line 1".to_string(), "Line 2".to_string(), "Line 3".to_string()]);
+    fn test_find_first_uppercase() {
+        let buf = new_test_buffer_find();
+        let pattern = |c: char| c.is_uppercase();
         assert_eq!(
-            buffer.get_sliced_buffer(Some(LineCol { line: 1, col: 0 }), None),
-            &["Line 2", "Line 3"]
+            buf.find(pattern, LineCol { line: 0, col: 1 }).unwrap(),
+            LineCol { line: 1, col: 0 }
         );
     }
 
     #[test]
-    fn test_get_to_middle() {
-        let buffer = VecBuffer::new(vec!["Line 1".to_string(), "Line 2".to_string(), "Line 3".to_string()]);
+    fn test_find_first_whitespace() {
+        let buf = new_test_buffer_find();
+        let pattern = char::is_whitespace;
         assert_eq!(
-            buffer.get_sliced_buffer(None, Some(LineCol { line: 1, col: 0 })),
-            &["Line 1", "Line 2"]
+            buf.find(pattern, LineCol { line: 0, col: 0 }).unwrap(),
+            LineCol { line: 0, col: 5 }
         );
     }
 
     #[test]
-    fn test_get_slice_in_middle() {
-        let buffer = VecBuffer::new(vec!["Line 1".to_string(), "Line 2".to_string(), "Line 3".to_string(), "Line 4".to_string()]);
+    fn test_find_specific_char() {
+        let buf = new_test_buffer_find();
+        let pattern = |c: char| c == 'e';
         assert_eq!(
-            buffer.get_sliced_buffer(Some(LineCol { line: 1, col: 0 }), Some(LineCol { line: 2, col: 0 })),
-            &["Line 2", "Line 3"]
+            buf.find(pattern, LineCol { line: 0, col: 0 }).unwrap(),
+            LineCol { line: 0, col: 9 }
         );
     }
 
     #[test]
-    fn test_out_of_bounds() {
-        let buffer = VecBuffer::new(vec!["Line 1".to_string(), "Line 2".to_string()]);
-        assert_eq!(
-            buffer.get_sliced_buffer(Some(LineCol { line: 5, col: 0 }), None),
-            &[] as &[String]
-        );
+    fn test_find_no_match() {
+        let buf = new_test_buffer_find();
+        let pattern = |c: char| c.is_ascii_punctuation() && c != ',';
+        assert!(buf.find(pattern, LineCol { line: 0, col: 0 }).is_err());
     }
 
     #[test]
-    fn test_from_greater_than_to() {
-        let buffer = VecBuffer::new(vec!["Line 1".to_string(), "Line 2".to_string(), "Line 3".to_string()]);
+    fn test_find_complex_condition() {
+        let buf = new_test_buffer_find();
+        let pattern = |c: char| c.is_lowercase() && "aeiou".contains(c);
         assert_eq!(
-            buffer.get_sliced_buffer(Some(LineCol { line: 2, col: 0 }), Some(LineCol { line: 1, col: 0 })),
-            &[] as &[String]
+            buf.find(pattern, LineCol { line: 0, col: 0 }).unwrap(),
+            LineCol { line: 0, col: 1 }  // Should find 'i' in "First"
         );
+    }
+    #[test]
+    fn test_get_partial_buffer_full_range() {
+        let buf = new_test_buffer_find();
+        let result = buf.get_partial_buffer(None, None).unwrap();
+        assert_eq!(result, buf.text);
     }
 
     #[test]
-    fn test_to_beyond_end() {
-        let buffer = VecBuffer::new(vec!["Line 1".to_string(), "Line 2".to_string(), "Line 3".to_string()]);
-        assert_eq!(
-            buffer.get_sliced_buffer(None, Some(LineCol { line: 5, col: 0 })),
-            &["Line 1", "Line 2", "Line 3"]
+    fn test_get_partial_buffer_single_line() {
+        let buf = new_test_buffer_find();
+        let result = buf.get_partial_buffer(
+            Some(LineCol { line: 0, col: 6 }),
+            Some(LineCol { line: 0, col: 10 })
+        ).unwrap();
+        assert_eq!(result, vec!["line"]);
+    }
+
+    #[test]
+    fn test_get_partial_buffer_multiple_lines() {
+        let buf = new_test_buffer_find();
+        let result = buf.get_partial_buffer(
+            Some(LineCol { line: 0, col: 6 }),
+            Some(LineCol { line: 2, col: 5 })
+        ).unwrap();
+        assert_eq!(result, vec!["line with some text", "Second line also has text", "Third"]);
+    }
+
+    #[test]
+    fn test_get_partial_buffer_from_middle_to_end() {
+        let buf = new_test_buffer_find();
+        let result = buf.get_partial_buffer(
+            Some(LineCol { line: 1, col: 7 }),
+            None
+        ).unwrap();
+        assert_eq!(result, vec!["line also has text", "Third line is here too"]);
+    }
+
+    #[test]
+    fn test_get_partial_buffer_from_start_to_middle() {
+        let buf = new_test_buffer_find();
+        let result = buf.get_partial_buffer(
+            None,
+            Some(LineCol { line: 1, col: 7 })
+        ).unwrap();
+        assert_eq!(result, vec!["First line with some text", "Second "]);
+    }
+
+    #[test]
+    fn test_get_partial_buffer_invalid_range() {
+        let buf = new_test_buffer_find();
+        let result = buf.get_partial_buffer(
+            Some(LineCol { line: 2, col: 0 }),
+            Some(LineCol { line: 1, col: 0 })
         );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_partial_buffer_empty_range() {
+        let buf = new_test_buffer_find();
+        let result = buf.get_partial_buffer(
+            Some(LineCol { line: 1, col: 5 }),
+            Some(LineCol { line: 1, col: 5 })
+        ).unwrap();
+        assert_eq!(result, vec![""]);
+    }
+
+    #[test]
+    fn test_get_partial_buffer_last_line() {
+        let buf = new_test_buffer_find();
+        let result = buf.get_partial_buffer(
+            Some(LineCol { line: 2, col: 6 }),
+            None
+        ).unwrap();
+        assert_eq!(result, vec!["line is here too"]);
     }
 }

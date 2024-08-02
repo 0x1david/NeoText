@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, fmt::Display};
 
-use crate::modal::Modal;
+use crate::{modal::Modal, notif_bar, get_debug_messages};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct LineCol {
@@ -49,7 +49,7 @@ impl Default for Cursor {
 impl Cursor {
     #[inline]
     pub fn go(&mut self, to: LineCol) {
-        self.pos = to;
+        self.pos = notif_bar!(to);
     }
 
     #[inline]

@@ -35,7 +35,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     ///
     /// # Behavior
     /// 1. Stores the original cursor position.
-    /// 2. Applies the movement to the cursor.
+    /// 3. Applies the movement to the cursor.
     /// 3. If the new line exceeds the buffer's max line, reverts to the original position.
     /// 4. If the new column exceeds the max column for that line, adjusts to the max column.
     fn if_within_bounds<F>(&mut self, movement: F)
@@ -258,6 +258,20 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                     'l' => self.if_within_bounds(Cursor::bump_right),
                     'k' => self.if_within_bounds(Cursor::bump_up),
                     'j' => self.if_within_bounds(Cursor::bump_down),
+                    'W' => {
+                        let mut pos_not_inclusive = self.pos();
+                        pos_not_inclusive.col += 1;
+                        let mut dest = self.buffer.find(char::is_whitespace, pos_not_inclusive)?;
+                        dest = self.buffer.find(|ch| !char::is_whitespace(ch), dest)?;
+                        notif_bar!(dest);
+                        self.go(dest);
+                    },
+                    'w' => {
+                        let mut pos_not_inclusive = self.pos();
+                        pos_not_inclusive.col += 1;
+                        let dest = self.buffer.find(|ch| !char::is_alphanumeric(ch), pos_not_inclusive)?;
+                        self.go(dest)
+                        }
                     _ => {
                         notif_bar!("nothing");
                     }
