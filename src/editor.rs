@@ -3,11 +3,11 @@ use crate::bars::{
     INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE, INFO_BAR_MODAL_INDICATOR_X_LOCATION,
     INFO_BAR_Y_LOCATION, NOTIFICATION_BAR, NOTIFICATION_BAR_Y_LOCATION,
 };
-use crate::{Result, Error};
 use crate::buffer::TextBuffer;
 use crate::cursor::{Cursor, LineCol};
 use crate::modal::{FindMode, Modal};
-use crate::notif_bar;
+use crate::{notif_bar, repeat};
+use crate::{Error, Result};
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
@@ -132,7 +132,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                 _ => self.buffer.clear_command(),
             }
             let _ = match self.mode {
-                Modal::Normal => self.run_normal(),
+                Modal::Normal => self.run_normal(None),
                 Modal::Find(find_mode) => {
                     if self.buffer.is_command_empty() {
                         match find_mode {
@@ -235,7 +235,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         };
         Ok(false)
     }
-    fn run_normal(&mut self) -> Result<()> {
+    fn run_normal(&mut self, carry_over: Option<i32>) -> Result<()> {
         self.draw_rows()?;
         draw_bar(&INFO_BAR, |term_width, _| {
             self.get_info_bar_content(term_width)
@@ -243,51 +243,63 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         draw_bar(&NOTIFICATION_BAR, |_, _| self.get_notif_bar_content())?;
         self.move_cursor();
 
+
         if let Event::Key(key_event) = event::read()? {
-            if let KeyCode::Char(ch) = key_event.code {
-                match ch {
-                    'i' => self.set_mode(Modal::Insert),
-                    'o' => {
-                        self.set_mode(Modal::Insert);
-                        self.newline()
-                    }
-                    ':' => self.set_mode(Modal::Command),
-                    '/' => self.set_mode(Modal::Find(FindMode::Forwards)),
-                    '?' => self.set_mode(Modal::Find(FindMode::Backwards)),
-                    'h' => self.if_within_bounds(Cursor::bump_left),
-                    'l' => self.if_within_bounds(Cursor::bump_right),
-                    'k' => self.if_within_bounds(Cursor::bump_up),
-                    'j' => self.if_within_bounds(Cursor::bump_down),
-                    'W' => {
-                        let mut pos_not_inclusive = self.pos();
-                        pos_not_inclusive.col += 1;
-                        let mut dest = self.buffer.find(char::is_whitespace, pos_not_inclusive)?;
-                        dest = self.buffer.find(|ch| !char::is_whitespace(ch), dest)?;
-                        notif_bar!(dest);
-                        self.go(dest);
-                    },
-                    'w' => {
-                        let mut pos_not_inclusive = self.pos();
-                        pos_not_inclusive.col += 1;
-                        let dest = self.buffer.find(|ch| !char::is_alphanumeric(ch), pos_not_inclusive)?;
-                        self.go(dest)
-                        }
-                    _ => {
-                        notif_bar!("nothing");
-                    }
-                }
-            } else {
-                match key_event.code {
-                    KeyCode::Esc => exit(0),
-                    _ => {
-                        notif_bar!("nothing");
-                    }
-                }
+            match key_event.code {
+                KeyCode::Char(ch) => self.handle_char_input(ch, carry_over)?,
+                KeyCode::Esc => exit(0),
+                _ => {notif_bar!("nothing");},
             }
-        };
+        }
+
+        Ok(())
+    }
+    fn handle_char_input(&mut self, ch: char, carry_over: Option<i32>) -> Result<()> {
+        match ch {
+            'i' => self.set_mode(Modal::Insert),
+            'o' => {
+                self.set_mode(Modal::Insert);
+                self.newline()
+            }
+            ':' => self.set_mode(Modal::Command),
+            '/' => self.set_mode(Modal::Find(FindMode::Forwards)),
+            '?' => self.set_mode(Modal::Find(FindMode::Backwards)),
+            'h' => repeat!(self.if_within_bounds(Cursor::bump_left); carry_over),
+            'l' => repeat!(self.if_within_bounds(Cursor::bump_right); carry_over),
+            'k' => repeat!(self.if_within_bounds(Cursor::bump_up); carry_over),
+            'j' => repeat!(self.if_within_bounds(Cursor::bump_down); carry_over),
+            'W' => repeat!(self.move_to_next_word_after_whitespace()?; carry_over),
+            'w' => repeat!(self.move_to_next_non_alphanumeric()?; carry_over),
+            '0'..='9' => self.handle_number_input(ch, carry_over),
+            _ => {notif_bar!("nothing");},
+        }
+        Ok(())
+    }
+    fn move_to_next_word_after_whitespace(&mut self) -> Result<()> {
+        let mut pos = self.pos();
+        pos.col += 1;
+        let mut dest = self.buffer.find(char::is_whitespace, pos)?;
+        dest = self.buffer.find(|ch| !char::is_whitespace(ch), dest)?;
+        notif_bar!(dest);
+        self.go(dest);
         Ok(())
     }
 
+    fn move_to_next_non_alphanumeric(&mut self) -> Result<()> {
+        let mut pos = self.pos();
+        pos.col += 1;
+        let dest = self.buffer.find(|ch| !char::is_alphanumeric(ch), pos)?;
+        self.go(dest);
+        Ok(())
+    }
+    fn handle_number_input(&mut self, num: char, carry_over: Option<i32>) {
+        let digit = (num as u8 - b'0') as i32;
+        let new_carry_over = carry_over.map_or(
+            digit,
+            |current_carry_over| concatenate_ints(current_carry_over, digit)
+        );
+        let _ = self.run_normal(Some(new_carry_over));
+    }
     //         terminal::disable_raw_mode()?;
     //         execute!(stdout, terminal::Clear(ClearType::All))?;
     //         Ok(())
@@ -334,14 +346,14 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     /// # Errors
     /// This function can return an error if the terminal cursor movement operation fails.
     fn move_cursor(&self) {
-        execute!(
+        let _ = execute!(
             stdout(),
             crossterm::cursor::MoveTo(self.cursor.col() as u16, self.cursor.line() as u16)
         );
     }
 
     fn move_command_cursor(&self, term_size: u16) {
-        execute!(
+        let _ = execute!(
             stdout(),
             crossterm::cursor::MoveTo(
                 self.cursor.col() as u16,
@@ -375,7 +387,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
             .lock()
             .unwrap()
             .pop_front()
-            .unwrap_or("".to_string())
+            .unwrap_or_default()
     }
 
     /// Draws the information bar at the bottom of the editor.
@@ -408,74 +420,96 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
             - pos_string.len()
             - INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE;
 
+        #[allow(clippy::repeat_once)]
+        let loc_neg = " ".repeat(INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE);
         format!(
             "{}{}{}{}",
             modal_string,
             " ".repeat(middle_space),
             pos_string,
-            " ".repeat(INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE)
+            loc_neg
         )
     }
+
+    //     fn insert_char(&mut self, c: char) {
+    //         let current_line = &mut self.content[self.cursor_y];
+    //         current_line.insert(self.cursor_x, c);
+    //         self.cursor_x += 1;
+    //     }
+
+    //     fn insert_newline(&mut self) {
+    //         let current_line = &mut self.content[self.cursor_y];
+    //         let rest_of_line = current_line.split_off(self.cursor_x);
+    //         self.content.insert(self.cursor_y + 1, rest_of_line);
+    //         self.cursor_y += 1;
+    //         self.cursor_x = 0;
+    //     }
+
+    //     fn delete_char(&mut self) {
+    //         let current_line = &mut self.content[self.cursor_y];
+    //         if self.cursor_x > 0 {
+    //             current_line.remove(self.cursor_x - 1);
+    //             self.cursor_x -= 1;
+    //         } else if self.cursor_y > 0 {
+    //             let line = self.content.remove(self.cursor_y);
+    //             self.cursor_y -= 1;
+    //             self.cursor_x = self.content[self.cursor_y].len();
+    //             self.content[self.cursor_y].push_str(&line);
+    //         }
+    //     }
+
+    //     fn move_cursor_left(&mut self) {
+    //         if self.cursor_x > 0 {
+    //             self.cursor_x -= 1;
+    //         } else if self.cursor_y > 0 {
+    //             self.cursor_y -= 1;
+    //             self.cursor_x = self.content[self.cursor_y].len();
+    //         }
+    //     }
+
+    //     fn move_cursor_right(&mut self) {
+    //         if self.cursor_x < self.content[self.cursor_y].len() {
+    //             self.cursor_x += 1;
+    //         } else if self.cursor_y < self.content.len() - 1 {
+    //             self.cursor_y += 1;
+    //             self.cursor_x = 0;
+    //         }
+    //     }
+
+    //     fn move_cursor_up(&mut self) {
+    //         if self.cursor_y > 0 {
+    //             self.cursor_y -= 1;
+    //             self.cursor_x = self.cursor_x.min(self.content[self.cursor_y].len());
+    //         }
+    //     }
+
+    //     fn move_cursor_down(&mut self) {
+    //         if self.cursor_y < self.content.len() - 1 {
+    //             self.cursor_y += 1;
+    //             self.cursor_x = self.cursor_x.min(self.content[self.cursor_y].len());
+    //         }
+    //     }
+    // }
+    //
+    //
+    //
+    //
+}
+fn concatenate_ints(a: i32, b: i32) -> i32 {
+    format!("{a}{b}").parse().unwrap()
 }
 
-//     fn insert_char(&mut self, c: char) {
-//         let current_line = &mut self.content[self.cursor_y];
-//         current_line.insert(self.cursor_x, c);
-//         self.cursor_x += 1;
-//     }
-
-//     fn insert_newline(&mut self) {
-//         let current_line = &mut self.content[self.cursor_y];
-//         let rest_of_line = current_line.split_off(self.cursor_x);
-//         self.content.insert(self.cursor_y + 1, rest_of_line);
-//         self.cursor_y += 1;
-//         self.cursor_x = 0;
-//     }
-
-//     fn delete_char(&mut self) {
-//         let current_line = &mut self.content[self.cursor_y];
-//         if self.cursor_x > 0 {
-//             current_line.remove(self.cursor_x - 1);
-//             self.cursor_x -= 1;
-//         } else if self.cursor_y > 0 {
-//             let line = self.content.remove(self.cursor_y);
-//             self.cursor_y -= 1;
-//             self.cursor_x = self.content[self.cursor_y].len();
-//             self.content[self.cursor_y].push_str(&line);
-//         }
-//     }
-
-//     fn move_cursor_left(&mut self) {
-//         if self.cursor_x > 0 {
-//             self.cursor_x -= 1;
-//         } else if self.cursor_y > 0 {
-//             self.cursor_y -= 1;
-//             self.cursor_x = self.content[self.cursor_y].len();
-//         }
-//     }
-
-//     fn move_cursor_right(&mut self) {
-//         if self.cursor_x < self.content[self.cursor_y].len() {
-//             self.cursor_x += 1;
-//         } else if self.cursor_y < self.content.len() - 1 {
-//             self.cursor_y += 1;
-//             self.cursor_x = 0;
-//         }
-//     }
-
-//     fn move_cursor_up(&mut self) {
-//         if self.cursor_y > 0 {
-//             self.cursor_y -= 1;
-//             self.cursor_x = self.cursor_x.min(self.content[self.cursor_y].len());
-//         }
-//     }
-
-//     fn move_cursor_down(&mut self) {
-//         if self.cursor_y < self.content.len() - 1 {
-//             self.cursor_y += 1;
-//             self.cursor_x = self.cursor_x.min(self.content[self.cursor_y].len());
-//         }
-//     }
-// }
-//
-//
+#[macro_export]
+macro_rules! repeat {
+    ($statement:expr; $count:expr) => {
+        {
+            let count = match $count {
+                Some(n) => n,
+                None => 1,
+            };
+            for _ in 0..count {
+                $statement
+            }
+        }
+    };
+}

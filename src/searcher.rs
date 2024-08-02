@@ -13,7 +13,6 @@
 // and returns a LineCol
 
 use std::borrow::Cow;
-use crate::{notif_bar, get_debug_messages};
 
 use crate::cursor::LineCol;
 
@@ -28,20 +27,16 @@ pub trait Pattern {
     fn find_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol>;
 }
 
-impl Pattern for &str
-{
+impl Pattern for &str {
     fn find_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
         haystack
             .iter()
             .enumerate()
             .find_map(|(line_num, line_content)| {
-                line_content
-                    .as_ref()
-                    .find(self)
-                    .map(|col| LineCol {
-                        line: line_num,
-                        col,
-                    })
+                line_content.as_ref().find(self).map(|col| LineCol {
+                    line: line_num,
+                    col,
+                })
             })
     }
 }
@@ -81,13 +76,10 @@ impl Pattern for char {
             .iter()
             .enumerate()
             .find_map(|(line_num, line_content)| {
-                line_content
-                    .as_ref()
-                    .find(*self)
-                    .map(|col| LineCol {
-                        line: line_num,
-                        col,
-                    })
+                line_content.as_ref().find(*self).map(|col| LineCol {
+                    line: line_num,
+                    col,
+                })
             })
     }
 }
@@ -129,36 +121,50 @@ mod tests {
     fn test_str_pattern() {
         let buffer = create_test_buffer();
         let pattern = "world";
-        assert_eq!(pattern.find_pattern(&buffer), Some(LineCol { line: 0, col: 7 }));
+        assert_eq!(
+            pattern.find_pattern(&buffer),
+            Some(LineCol { line: 0, col: 7 })
+        );
     }
 
     #[test]
     fn test_string_pattern() {
         let buffer = create_test_buffer();
         let pattern = "test".to_string();
-        assert_eq!(pattern.find_pattern(&buffer), Some(LineCol { line: 1, col: 10 }));
+        assert_eq!(
+            pattern.find_pattern(&buffer),
+            Some(LineCol { line: 1, col: 10 })
+        );
     }
 
     #[test]
     fn test_cow_str_pattern() {
         let buffer = create_test_buffer();
         let pattern: Cow<str> = Cow::Borrowed("This");
-        assert_eq!(pattern.find_pattern(&buffer), Some(LineCol { line: 1, col: 0 }));
+        assert_eq!(
+            pattern.find_pattern(&buffer),
+            Some(LineCol { line: 1, col: 0 })
+        );
     }
 
     #[test]
     fn test_char_pattern() {
         let buffer = create_test_buffer();
         let pattern = '5';
-        assert_eq!(pattern.find_pattern(&buffer), Some(LineCol { line: 2, col: 4 }));
+        assert_eq!(
+            pattern.find_pattern(&buffer),
+            Some(LineCol { line: 2, col: 4 })
+        );
     }
-
 
     #[test]
     fn test_char_predicate_pattern() {
         let buffer = create_test_buffer();
         let pattern = |c: char| c.is_ascii_digit();
-        assert_eq!(pattern.find_pattern(&buffer), Some(LineCol { line: 2, col: 0 }));
+        assert_eq!(
+            pattern.find_pattern(&buffer),
+            Some(LineCol { line: 2, col: 0 })
+        );
     }
 
     #[test]
@@ -178,14 +184,20 @@ mod tests {
     fn test_pattern_at_start() {
         let buffer = vec!["Start here".to_string()];
         let pattern = "Start";
-        assert_eq!(pattern.find_pattern(&buffer), Some(LineCol { line: 0, col: 0 }));
+        assert_eq!(
+            pattern.find_pattern(&buffer),
+            Some(LineCol { line: 0, col: 0 })
+        );
     }
 
     #[test]
     fn test_pattern_at_end() {
         let buffer = vec!["End here".to_string()];
         let pattern = "here";
-        assert_eq!(pattern.find_pattern(&buffer), Some(LineCol { line: 0, col: 4 }));
+        assert_eq!(
+            pattern.find_pattern(&buffer),
+            Some(LineCol { line: 0, col: 4 })
+        );
     }
 
     #[test]
@@ -199,21 +211,30 @@ mod tests {
     fn test_char_pattern_whitespace() {
         let buffer = vec!["No space".to_string(), " Leading space".to_string()];
         let pattern = ' ';
-        assert_eq!(pattern.find_pattern(&buffer), Some(LineCol { line: 0, col: 2 }));
+        assert_eq!(
+            pattern.find_pattern(&buffer),
+            Some(LineCol { line: 0, col: 2 })
+        );
     }
 
     #[test]
     fn test_char_predicate_uppercase() {
         let buffer = vec!["lowercase".to_string(), "UPPERCASE".to_string()];
         let pattern = |c: char| c.is_ascii_uppercase();
-        assert_eq!(pattern.find_pattern(&buffer), Some(LineCol { line: 1, col: 0 }));
+        assert_eq!(
+            pattern.find_pattern(&buffer),
+            Some(LineCol { line: 1, col: 0 })
+        );
     }
 
     #[test]
     fn test_pattern_with_special_chars() {
         let buffer = vec!["Special: !@#$%^&*()".to_string()];
         let pattern = "$%^&";
-        assert_eq!(pattern.find_pattern(&buffer), Some(LineCol { line: 0, col: 12 }));
+        assert_eq!(
+            pattern.find_pattern(&buffer),
+            Some(LineCol { line: 0, col: 12 })
+        );
     }
 
     #[test]
@@ -227,7 +248,10 @@ mod tests {
     fn test_pattern_overlapping() {
         let buffer = vec!["aaa".to_string()];
         let pattern = "aa";
-        assert_eq!(pattern.find_pattern(&buffer), Some(LineCol { line: 0, col: 0 }));
+        assert_eq!(
+            pattern.find_pattern(&buffer),
+            Some(LineCol { line: 0, col: 0 })
+        );
     }
     #[test]
     fn test_sequential_char_predicates() {
@@ -239,7 +263,7 @@ mod tests {
         ];
 
         let predicate1 = |c: char| c.is_ascii_digit();
-        
+
         let predicate2 = |c: char| c.is_ascii_uppercase();
 
         let result1 = predicate1.find_pattern(&buffer);
@@ -248,7 +272,10 @@ mod tests {
         let result2 = predicate2.find_pattern(&buffer[result1.unwrap().line + 1..]);
         assert_eq!(result2, Some(LineCol { line: 0, col: 0 })); // 'S' in "Second"
 
-        let final_result = result2.map(|lc| LineCol { line: lc.line + result1.unwrap().line + 1, col: lc.col });
+        let final_result = result2.map(|lc| LineCol {
+            line: lc.line + result1.unwrap().line + 1,
+            col: lc.col,
+        });
         assert_eq!(final_result, Some(LineCol { line: 1, col: 0 }));
     }
 }
