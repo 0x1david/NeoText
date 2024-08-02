@@ -161,7 +161,7 @@ where
     let content = content_generator(term_width as usize, term_height as usize);
     print!("{}{}", " ".repeat(bar.x_padding), content);
 
-    let remaining_width = term_width as usize - content.len() - bar.x_padding;
+    let remaining_width = (term_width as usize).saturating_sub(content.len()).saturating_sub(bar.x_padding);
     print!("{}", " ".repeat(remaining_width));
     stdout.flush()?;
     execute!(stdout, style::ResetColor)?;
