@@ -10,30 +10,30 @@ use std::{
     sync::{Mutex, OnceLock},
 };
 
-pub const INFO_BAR_Y_LOCATION: usize = 1;
-pub const NOTIFICATION_BAR_Y_LOCATION: usize = 0;
-pub const INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE: usize = 1;
-pub const INFO_BAR_MODAL_INDICATOR_X_LOCATION: usize = 1;
-pub const NOTIFICATION_BAR_TEXT_X_LOCATION: usize = 2;
+pub const INFO_BAR_Y_LOCATION: u16 = 1;
+pub const NOTIFICATION_BAR_Y_LOCATION: u16 = 0;
+pub const INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE: u16 = 1;
+pub const INFO_BAR_MODAL_INDICATOR_X_LOCATION: u16 = 1;
+pub const NOTIFICATION_BAR_TEXT_X_LOCATION: u16 = 2;
 pub const DEFAULT_FG: Color = Color::White;
 pub const DEFAULT_BG: Color = Color::Reset;
 
 pub const NOTIFICATION_BAR: BarInfo = BarInfo::new(
-    NOTIFICATION_BAR_Y_LOCATION as u16,
+    NOTIFICATION_BAR_Y_LOCATION,
     NOTIFICATION_BAR_TEXT_X_LOCATION,
     DEFAULT_FG,
     DEFAULT_BG,
 );
 
 pub const INFO_BAR: BarInfo = BarInfo::new(
-    INFO_BAR_Y_LOCATION as u16,
+    INFO_BAR_Y_LOCATION,
     INFO_BAR_MODAL_INDICATOR_X_LOCATION,
     DEFAULT_FG,
     Color::DarkGrey,
 );
 
 pub const COMMAND_BAR: BarInfo = BarInfo::new(
-    NOTIFICATION_BAR_Y_LOCATION as u16,
+    NOTIFICATION_BAR_Y_LOCATION ,
     0,
     DEFAULT_FG,
     DEFAULT_BG,
@@ -90,7 +90,7 @@ macro_rules! notif_bar {
         let line = line!();
         let val = $val;
         let message = format!("[{}:{}] {} = {:?}", file, line, stringify!($val), &val);
-        if let Ok(mut messages) = get_debug_messages().lock() {
+        if let Ok(mut messages) = $crate::bars::get_debug_messages().lock() {
             messages.push_back(message);
             if messages.len() > 10 {
                 messages.pop_front();
@@ -125,15 +125,15 @@ macro_rules! notif_bar {
 
 pub struct BarInfo {
     pub y_offset: u16,
+    pub x_padding: u16,
     /// Foreground color
     pub fg_color: Color,
     /// Background color
     pub bg_color: Color,
-    pub x_padding: usize,
 }
 
 impl BarInfo {
-    const fn new(y_offset: u16, x_padding: usize, fg_color: Color, bg_color: Color) -> Self {
+    const fn new(y_offset: u16, x_padding: u16, fg_color: Color, bg_color: Color) -> Self {
         Self {
             y_offset,
             x_padding,
@@ -159,14 +159,42 @@ where
         style::SetBackgroundColor(bar.bg_color),
     )?;
     let content = content_generator(term_width as usize, term_height as usize);
-    print!("{}{}", " ".repeat(bar.x_padding), content);
+    print!("{}{}", " ".repeat(bar.x_padding as usize), content);
 
     let remaining_width = (term_width as usize)
         .saturating_sub(content.len())
-        .saturating_sub(bar.x_padding);
+        .saturating_sub(bar.x_padding as usize);
     print!("{}", " ".repeat(remaining_width));
     stdout.flush()?;
     execute!(stdout, style::ResetColor)?;
 
     Ok(())
+}
+
+/// Draws the notification bar at the bottom of the terminal.
+///
+/// This function is responsible for rendering the debug notification bar, which displays
+/// the most recent message from the debug queue and potentially other editor status
+/// information. It performs the following operations:
+///
+/// # Display Characteristics
+/// - Location: Positioned `NOTIFICATION_BAR_Y_LOCATION` lines from the bottom of the terminal.
+/// - Color: White text on the terminal's default background.
+/// - Padding: Starts `NOTIFICATION_BAR_TEXT_X_LOCATION` spaces from the left edge.
+/// - Width: Utilizes the full width of the terminal, truncating the message if necessary.
+///
+/// # Message Handling
+/// - Messages exceeding the available width are truncated with an ellipsis ("...").
+/// - After displaying, the message is removed from the queue.
+///
+/// # Errors
+/// Returns a `Result` which is:
+/// - `Ok(())` if all terminal operations succeed.
+/// - `Err(...)` if any terminal operation fails (e.g., writing to stdout, flushing).
+pub fn get_notif_bar_content() -> String {
+    get_debug_messages()
+        .lock()
+        .unwrap()
+        .pop_front()
+        .unwrap_or_default()
 }

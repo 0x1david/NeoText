@@ -2,13 +2,12 @@
 use std::{io::stdout, path::PathBuf};
 
 mod error;
-use bars::get_debug_messages;
 use buffer::VecBuffer;
 use crossterm::{
     execute,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use editor::MainEditor;
+use editor::Editor;
 use error::{Error, Result};
 
 mod bars;
@@ -16,8 +15,9 @@ mod buffer;
 mod cli;
 mod cursor;
 mod editor;
-mod modal;
+mod modals;
 mod searcher;
+mod utils;
 
 fn main() {
     let _ = execute!(stdout(), EnterAlternateScreen);
@@ -29,12 +29,26 @@ fn main() {
     let _ = terminal::disable_raw_mode();
 }
 
-pub fn new_from_file(p: PathBuf) -> MainEditor<VecBuffer> {
+/// Creates a `MainEditor` instance from a file.
+///
+/// Reads the file at `p`, converts its content to a `VecBuffer`,
+/// and initializes a `MainEditor` with this buffer.
+///
+/// # Arguments
+/// * `p` - Path to the file to be read.
+///
+/// # Returns
+/// A `MainEditor<VecBuffer>` with the file's content.
+///
+/// # Panics
+/// - If the file can't be read.
+/// - If the file content is not valid UTF-8.
+pub fn new_from_file(p: PathBuf) -> Editor<VecBuffer> {
     let content = match std::fs::read(p) {
         Err(e) => panic!("{}", e),
         Ok(content) => content,
     };
-    MainEditor::new(VecBuffer::new(
+    Editor::new(VecBuffer::new(
         String::from_utf8(content)
             .expect("Invalid utf8 file")
             .lines()

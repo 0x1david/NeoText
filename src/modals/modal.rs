@@ -1,8 +1,7 @@
 use std::fmt::Display;
 
-use anyhow::Result;
 /// Contains the main modal variants of the editor.
-#[derive(Default, Debug, PartialEq)]
+#[derive(Default, Debug, PartialEq, Eq)]
 pub enum Modal {
     #[default]
     Normal,
@@ -12,7 +11,7 @@ pub enum Modal {
     Command,
 }
 
-#[derive(Default, Debug, PartialEq, Clone, Copy)]
+#[derive(Default, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum FindMode {
     #[default]
     Forwards,

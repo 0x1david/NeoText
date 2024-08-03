@@ -1,12 +1,13 @@
+#![allow(clippy::match_wild_err_arm)]
 use crate::bars::{
-    draw_bar, get_debug_messages, COMMAND_BAR, INFO_BAR,
+    get_notif_bar_content, draw_bar, get_debug_messages, COMMAND_BAR, INFO_BAR,
     INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE, INFO_BAR_MODAL_INDICATOR_X_LOCATION,
     INFO_BAR_Y_LOCATION, NOTIFICATION_BAR, NOTIFICATION_BAR_Y_LOCATION,
 };
 use crate::buffer::TextBuffer;
 use crate::cursor::{Cursor, LineCol};
-use crate::modal::{FindMode, Modal};
-use crate::{notif_bar, repeat};
+use crate::modals::{FindMode, Modal};
+use crate::notif_bar;
 use crate::{Error, Result};
 use crossterm::{
     event::{self, Event, KeyCode},
@@ -19,15 +20,15 @@ use std::io::stdout;
 use std::process::exit;
 
 /// The main editor is used as the main API for all commands
-pub struct MainEditor<Buff: TextBuffer> {
+pub struct Editor<Buff: TextBuffer> {
     /// In the first implementation I will start with Vec, for simplicity, fairly early to the dev
     /// process a better data structure will have to be found and vec replaced;
-    cursor: Cursor,
-    buffer: Buff,
+    pub(crate) cursor: Cursor,
+    pub(crate) buffer: Buff,
     mode: Modal,
 }
 
-impl<Buff: TextBuffer> MainEditor<Buff> {
+impl<Buff: TextBuffer> Editor<Buff> {
     /// Applies a cursor movement if it results in a valid position within the buffer bounds.
     ///
     /// # Arguments
@@ -38,7 +39,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     /// 3. Applies the movement to the cursor.
     /// 3. If the new line exceeds the buffer's max line, reverts to the original position.
     /// 4. If the new column exceeds the max column for that line, adjusts to the max column.
-    fn if_within_bounds<F>(&mut self, movement: F)
+    pub fn if_within_bounds<F>(&mut self, movement: F)
     where
         F: FnOnce(&mut Cursor),
     {
@@ -56,20 +57,20 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     }
 
     #[inline]
-    fn pos(&self) -> LineCol {
+    pub(crate) const fn pos(&self) -> LineCol {
         self.cursor.pos
     }
-    fn last_normal_pos(&self) -> LineCol {
+    const fn last_normal_pos(&self) -> LineCol {
         self.cursor.last_text_mode_pos
     }
-    fn set_mode(&mut self, modal: Modal) {
+    pub(crate) fn set_mode(&mut self, modal: Modal) {
         self.cursor.mod_change(&modal);
         self.buffer.set_plane(&modal);
         self.mode = modal;
     }
 
     #[inline]
-    fn go(&mut self, to: LineCol) {
+    pub(crate) fn go(&mut self, to: LineCol) {
         self.cursor.go(to);
     }
     fn delete(&mut self) {
@@ -88,13 +89,13 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
             Err(_) => panic!("UnexpectedError, please contact the developers.")
         }
     }
-    fn newline(&mut self) {
+    pub fn newline(&mut self) {
         self.cursor.pos = self.buffer.insert_newline(self.pos());
     }
 }
 
-impl<Buff: TextBuffer> MainEditor<Buff> {
-    /// Creates a new instance of MainEditor.
+impl<Buff: TextBuffer> Editor<Buff> {
+    /// Creates a new instance of `MainEditor`.
     ///
     /// # Arguments
     /// * `buffer` - The text buffer to be edited.
@@ -102,7 +103,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     /// # Returns
     /// A new `MainEditor` instance initialized with the given buffer and default cursor position.
     pub fn new(buffer: Buff) -> Self {
-        MainEditor {
+        Self {
             buffer,
             cursor: Cursor::default(),
             mode: Modal::default(),
@@ -154,7 +155,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                             Err(_) => panic!("Unexpected error returned from find. Please contact the developers."),
                             Ok(linecol) => self.cursor.last_text_mode_pos = linecol
                         }
-                        self.set_mode(Modal::Normal)
+                        self.set_mode(Modal::Normal);
                     }
                     Ok(())
                 }
@@ -162,7 +163,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                 Modal::Visual => self.run_visual(),
                 Modal::Command => {
                     if self.buffer.is_command_empty() {
-                        self.push(':')
+                        self.push(':');
                     }
                     if self.run_command()? {
                         match self.buffer.get_command_text()[0].as_str() {
@@ -170,7 +171,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                             "/EXIT NOW" => exit(0),
                             _ => {}
                         };
-                        self.set_mode(Modal::Normal)
+                        self.set_mode(Modal::Normal);
                     }
                     Ok(())
                 }
@@ -179,6 +180,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         Ok(())
     }
 
+    #[allow(clippy::unused_self, clippy::needless_pass_by_ref_mut)]
     fn run_visual(&mut self) -> Result<()> {
         unimplemented!()
     }
@@ -187,7 +189,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         draw_bar(&INFO_BAR, |term_width, _| {
             self.get_info_bar_content(term_width)
         })?;
-        draw_bar(&NOTIFICATION_BAR, |_, _| self.get_notif_bar_content())?;
+        draw_bar(&NOTIFICATION_BAR, |_, _| get_notif_bar_content())?;
         self.move_cursor();
 
         if let Event::Key(key_event) = event::read()? {
@@ -229,76 +231,11 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
                     self.set_mode(Modal::Normal);
                 }
                 _ => {
-                    notif_bar!("nothing";)
+                    notif_bar!("nothing";);
                 }
             }
         };
         Ok(false)
-    }
-    fn run_normal(&mut self, carry_over: Option<i32>) -> Result<()> {
-        self.draw_rows()?;
-        draw_bar(&INFO_BAR, |term_width, _| {
-            self.get_info_bar_content(term_width)
-        })?;
-        draw_bar(&NOTIFICATION_BAR, |_, _| self.get_notif_bar_content())?;
-        self.move_cursor();
-
-
-        if let Event::Key(key_event) = event::read()? {
-            match key_event.code {
-                KeyCode::Char(ch) => self.handle_char_input(ch, carry_over)?,
-                KeyCode::Esc => exit(0),
-                _ => {notif_bar!("nothing");},
-            }
-        }
-
-        Ok(())
-    }
-    fn handle_char_input(&mut self, ch: char, carry_over: Option<i32>) -> Result<()> {
-        match ch {
-            'i' => self.set_mode(Modal::Insert),
-            'o' => {
-                self.set_mode(Modal::Insert);
-                self.newline()
-            }
-            ':' => self.set_mode(Modal::Command),
-            '/' => self.set_mode(Modal::Find(FindMode::Forwards)),
-            '?' => self.set_mode(Modal::Find(FindMode::Backwards)),
-            'h' => repeat!(self.if_within_bounds(Cursor::bump_left); carry_over),
-            'l' => repeat!(self.if_within_bounds(Cursor::bump_right); carry_over),
-            'k' => repeat!(self.if_within_bounds(Cursor::bump_up); carry_over),
-            'j' => repeat!(self.if_within_bounds(Cursor::bump_down); carry_over),
-            'W' => repeat!(self.move_to_next_word_after_whitespace()?; carry_over),
-            'w' => repeat!(self.move_to_next_non_alphanumeric()?; carry_over),
-            '0'..='9' => self.handle_number_input(ch, carry_over),
-            _ => {notif_bar!("nothing");},
-        }
-        Ok(())
-    }
-    fn move_to_next_word_after_whitespace(&mut self) -> Result<()> {
-        let mut pos = self.pos();
-        pos.col += 1;
-        let mut dest = self.buffer.find(char::is_whitespace, pos)?;
-        dest = self.buffer.find(|ch| !char::is_whitespace(ch), dest)?;
-        notif_bar!(dest);
-        self.go(dest);
-        Ok(())
-    }
-
-    fn move_to_next_non_alphanumeric(&mut self) -> Result<()> {
-        let mut pos = self.pos();
-        pos.col += 1;
-        let dest = self.buffer.find(|ch| !char::is_alphanumeric(ch), pos)?;
-        self.go(dest);
-        Ok(())
-    }
-    fn handle_number_input(&mut self, num: char, carry_over: Option<i32>) {
-        let digit = (num as u8 - b'0') as i32;
-        let new_carry_over = carry_over.map_or(
-            digit,
-            |current_carry_over| concatenate_ints(current_carry_over, digit)
-        );
-        let _ = self.run_normal(Some(new_carry_over));
     }
     //         terminal::disable_raw_mode()?;
     //         execute!(stdout, terminal::Clear(ClearType::All))?;
@@ -317,7 +254,7 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     ///
     /// # Errors
     /// This function can return an error if terminal operations (e.g., clearing, moving cursor, writing) fail.
-    fn draw_rows(&self) -> Result<()> {
+    pub(crate) fn draw_rows(&self) -> Result<()> {
         let mut stdout = stdout();
         let (_, term_height) = terminal::size()?;
         execute!(
@@ -327,11 +264,11 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         )?;
 
         let split_line_n =
-            term_height as usize - 1 - (NOTIFICATION_BAR_Y_LOCATION).max(INFO_BAR_Y_LOCATION);
+            term_height as usize - 1 - (NOTIFICATION_BAR_Y_LOCATION as usize).max(INFO_BAR_Y_LOCATION as usize);
 
         for line in self.buffer.get_normal_text().iter().take(split_line_n) {
             execute!(stdout, terminal::Clear(ClearType::CurrentLine))?;
-            println!("{}\r", line);
+            println!("{line}\r");
         }
         Ok(())
     }
@@ -345,10 +282,11 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     ///
     /// # Errors
     /// This function can return an error if the terminal cursor movement operation fails.
-    fn move_cursor(&self) {
+    pub fn move_cursor(&self) {
+        let col = u16::try_from(self.cursor.col()).expect("Column location higher than 65356 is invalid");
         let _ = execute!(
             stdout(),
-            crossterm::cursor::MoveTo(self.cursor.col() as u16, self.cursor.line() as u16)
+            crossterm::cursor::MoveTo(col, u16::try_from(self.cursor.line()).expect("More than 65356 lines in a single file are currently unsupported."))
         );
     }
 
@@ -356,39 +294,12 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
         let _ = execute!(
             stdout(),
             crossterm::cursor::MoveTo(
-                self.cursor.col() as u16,
-                term_size - NOTIFICATION_BAR_Y_LOCATION as u16
+                u16::try_from(self.cursor.col()).expect("Column location lower than 0 or higher than 65356 is invalid"),
+                term_size - (NOTIFICATION_BAR_Y_LOCATION)
             )
         );
     }
 
-    /// Draws the notification bar at the bottom of the terminal.
-    ///
-    /// This function is responsible for rendering the debug notification bar, which displays
-    /// the most recent message from the debug queue and potentially other editor status
-    /// information. It performs the following operations:
-    ///
-    /// # Display Characteristics
-    /// - Location: Positioned `NOTIFICATION_BAR_Y_LOCATION` lines from the bottom of the terminal.
-    /// - Color: White text on the terminal's default background.
-    /// - Padding: Starts `NOTIFICATION_BAR_TEXT_X_LOCATION` spaces from the left edge.
-    /// - Width: Utilizes the full width of the terminal, truncating the message if necessary.
-    ///
-    /// # Message Handling
-    /// - Messages exceeding the available width are truncated with an ellipsis ("...").
-    /// - After displaying, the message is removed from the queue.
-    ///
-    /// # Errors
-    /// Returns a `Result` which is:
-    /// - `Ok(())` if all terminal operations succeed.
-    /// - `Err(...)` if any terminal operation fails (e.g., writing to stdout, flushing).
-    fn get_notif_bar_content(&self) -> String {
-        get_debug_messages()
-            .lock()
-            .unwrap()
-            .pop_front()
-            .unwrap_or_default()
-    }
 
     /// Draws the information bar at the bottom of the editor.
     ///
@@ -410,18 +321,18 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     /// - Cursor movement fails
     /// - Writing to stdout fails
     /// - Color setting or resetting fails
-    fn get_info_bar_content(&self, term_width: usize) -> String {
+    pub fn get_info_bar_content(&self, term_width: usize) -> String {
         let modal_string = format!("{}", self.mode);
         let pos_string = format!("{}", self.pos());
 
         let middle_space = term_width
-            - INFO_BAR_MODAL_INDICATOR_X_LOCATION
+            - INFO_BAR_MODAL_INDICATOR_X_LOCATION as usize
             - modal_string.len()
             - pos_string.len()
-            - INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE;
+            - INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE as usize;
 
         #[allow(clippy::repeat_once)]
-        let loc_neg = " ".repeat(INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE);
+        let loc_neg = " ".repeat(INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE as usize);
         format!(
             "{}{}{}{}",
             modal_string,
@@ -494,22 +405,4 @@ impl<Buff: TextBuffer> MainEditor<Buff> {
     //
     //
     //
-}
-fn concatenate_ints(a: i32, b: i32) -> i32 {
-    format!("{a}{b}").parse().unwrap()
-}
-
-#[macro_export]
-macro_rules! repeat {
-    ($statement:expr; $count:expr) => {
-        {
-            let count = match $count {
-                Some(n) => n,
-                None => 1,
-            };
-            for _ in 0..count {
-                $statement
-            }
-        }
-    };
 }

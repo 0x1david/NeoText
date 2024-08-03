@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, fmt::Display};
 
-use crate::{get_debug_messages, modal::Modal, notif_bar};
+use crate::{modals::Modal, notif_bar};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct LineCol {
@@ -35,7 +35,7 @@ pub struct Cursor {
 
 impl Default for Cursor {
     fn default() -> Self {
-        Cursor {
+        Self {
             pos: LineCol { line: 0, col: 0 },
             pos_initial: LineCol { line: 0, col: 0 },
             col_max: 0,
@@ -53,23 +53,23 @@ impl Cursor {
     }
 
     #[inline]
-    pub fn line(&self) -> usize {
+    pub const fn line(&self) -> usize {
         self.pos.line
     }
 
     #[inline]
     pub fn set_line(&mut self, new: usize) {
-        self.pos.line = new
+        self.pos.line = new;
     }
 
     #[inline]
-    pub fn col(&self) -> usize {
+    pub const fn col(&self) -> usize {
         self.pos.col
     }
 
     #[inline]
     pub fn set_col(&mut self, new: usize) {
-        self.pos.col = new
+        self.pos.col = new;
     }
     /// Moves the cursor one position to the left, if there's left to go to, otherwise remains in
     /// place.
@@ -104,7 +104,7 @@ impl Cursor {
     /// value
     #[inline]
     pub fn jump_left(&mut self, dist: usize) {
-        self.set_col(self.col().saturating_sub(dist))
+        self.set_col(self.col().saturating_sub(dist));
     }
     /// Moves the cursor right by the specified distance, clamping at the end of a row.
     /// TODO: Check whether Y is in the allowed boundaries for the new row, if it isnt, update the
@@ -118,7 +118,7 @@ impl Cursor {
     /// value
     #[inline]
     pub fn jump_up(&mut self, dist: usize) {
-        self.set_line(self.line().saturating_sub(dist))
+        self.set_line(self.line().saturating_sub(dist));
     }
     /// Moves the cursor down by the specified distance, clamping at the bottom of the file.
     /// TODO: Check whether X is in the allowed boundaries for the new row, if it isnt, update the
@@ -131,14 +131,10 @@ impl Cursor {
     /// Updates the location the cursor points at depending on the current active modal state.
     pub fn mod_change(&mut self, modal: &Modal) {
         if self.plane.text() {
-            self.last_text_mode_pos = self.pos
+            self.last_text_mode_pos = self.pos;
         }
         match modal {
-            Modal::Command => {
-                self.plane = CursorPlane::CommandBar;
-                self.pos = LineCol { line: 0, col: 0 };
-            }
-            Modal::Find(_) => {
+            Modal::Command | Modal::Find(_) => {
                 self.plane = CursorPlane::CommandBar;
                 self.pos = LineCol { line: 0, col: 0 };
             }
@@ -161,7 +157,7 @@ enum CursorPlane {
     Terminal,
 }
 impl CursorPlane {
-    fn text(&self) -> bool {
+    const fn text(&self) -> bool {
         #[allow(clippy::match_like_matches_macro)]
         match &self {
             Self::Text => true,

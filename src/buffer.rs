@@ -1,8 +1,9 @@
-use crate::{cursor::LineCol, modal::Modal, searcher::Pattern};
+use crate::{cursor::LineCol, modals::Modal, searcher::Pattern};
 use crate::{Error, Result};
 use std::collections::VecDeque;
 
 /// Trait defining the interface for a text buffer
+#[allow(clippy::module_name_repetitions)]
 pub trait TextBuffer {
     fn set_plane(&mut self, modal: &Modal);
     fn insert_newline(&mut self, at: LineCol) -> LineCol;
@@ -71,7 +72,7 @@ pub trait TextBuffer {
     fn max_linecol(&self) -> LineCol;
 }
 
-/// A stack implementation using a VecDeque as the underlying storage.
+/// A stack implementation using a `VecDeque` as the underlying storage.
 #[derive(Debug, Default)]
 pub struct Stack {
     content: VecDeque<StateCapsule>,
@@ -83,7 +84,7 @@ impl Stack {
     fn truncate(&mut self) {
         let len = self.content.len();
         if len > 1000 {
-            self.content.truncate(1000)
+            self.content.truncate(1000);
         }
     }
 
@@ -117,6 +118,7 @@ pub struct StateCapsule {
 /// A buffer implementation for storing text as a vector of lines,
 /// with undo and redo functionality. Highly inefficient, both tim complexity wise and implementation wise. Simply a placeholder for testing.
 #[derive(Debug)]
+#[allow(clippy::module_name_repetitions)]
 pub struct VecBuffer {
     /// The current state of the normal text buffer, stored as a vector of lines.
     text: Vec<String>,
@@ -142,9 +144,9 @@ enum BufferPlane {
 impl Default for VecBuffer {
     fn default() -> Self {
         Self {
-            text: vec!["".to_string()],
-            terminal: vec!["".to_string()],
-            command: vec!["".to_string()],
+            text: vec![String::default()],
+            terminal: vec![String::default()],
+            command: vec![String::default()],
             past: Stack::default(),
             future: Stack::default(),
             plane: BufferPlane::Normal,
@@ -156,8 +158,8 @@ impl VecBuffer {
     pub fn new(text: Vec<String>) -> Self {
         Self {
             text,
-            terminal: vec!["".to_string()],
-            command: vec!["".to_string()],
+            terminal: vec![String::default()],
+            command: vec![String::default()],
             past: Stack::default(),
             future: Stack::default(),
             plane: BufferPlane::Normal,
@@ -207,7 +209,7 @@ impl VecBuffer {
 impl TextBuffer for VecBuffer {
     fn clear_command(&mut self) {
         self.command.clear();
-        self.command.push(String::default())
+        self.command.push(String::default());
     }
     fn is_command_empty(&self) -> bool {
         self.command[0].is_empty()
@@ -232,7 +234,7 @@ impl TextBuffer for VecBuffer {
     }
     fn insert_newline(&mut self, mut at: LineCol) -> LineCol {
         self.get_mut_buffer()
-            .insert(at.line + 1, Default::default());
+            .insert(at.line + 1, String::default());
         at.line += 1;
         at.col = 0;
         at
@@ -350,7 +352,7 @@ impl TextBuffer for VecBuffer {
             .enumerate()
             .take(at.line + 1)
             .rev()
-            .flat_map(|(line_num, line)| {
+            .find_map(|(line_num, line)| {
                 let end_col = if line_num == at.line {
                     at.col
                 } else {
@@ -361,7 +363,6 @@ impl TextBuffer for VecBuffer {
                     col,
                 })
             })
-            .next()
             .ok_or(Error::PatternNotFound)
     }
 
@@ -491,7 +492,7 @@ impl TextBuffer for VecBuffer {
 
         if let Some(first_line) = lines.next() {
             let start = &self.get_buffer()[from.line][..from.col];
-            new_lines.push(format!("{}{}", start, first_line));
+            new_lines.push(format!("{start}{first_line}"));
         } else {
             new_lines.push(self.get_buffer()[from.line][..from.col].to_string());
         }
@@ -564,7 +565,7 @@ impl TextBuffer for VecBuffer {
             if lines.len() > 1 {
                 lines.last_mut().unwrap().push_str(&tail);
                 self.get_mut_buffer()
-                    .splice(at.line + 1..at.line + 1, lines.into_iter().skip(1));
+                    .splice(at.line + 1..=at.line, lines.into_iter().skip(1));
             } else {
                 current_line.push_str(&tail);
             }
