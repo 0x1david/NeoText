@@ -216,8 +216,8 @@ pub fn get_notif_bar_content() -> String {
 /// - Writing to stdout fails
 /// - Color setting or resetting fails
 pub fn get_info_bar_content(term_width: usize, mode: &Modal, pos: &LineCol) -> String {
-    let modal_string = format!("{}", mode);
-    let pos_string = format!("{}", pos);
+    let modal_string = format!("{mode}");
+    let pos_string = format!("{pos}");
 
     let middle_space = term_width
         - INFO_BAR_MODAL_INDICATOR_X_LOCATION as usize

@@ -1,3 +1,18 @@
+// Features to implement:
+//      Handle ensuring position is in bounds within the loop as a separate loop factor
+//      rfind Pattern and rfind on editor
+//      Combinations in Normal mode (CTRL, multiple key actions)
+//      Marks
+//      Undo and Redo
+//      Configuration parsing and configurable controller
+//      Visual Mode
+//      Command History
+//      Macros
+//      Scrolling
+//      LSP Integration
+//      Telescope
+//      Copy && Paste
+//      Programmable Extensions
 #![allow(dead_code)]
 use std::{io::stdout, path::PathBuf};
 
@@ -29,8 +44,7 @@ fn main() {
     let _ = terminal::disable_raw_mode();
 }
 
-/// Creates a `MainEditor` instance from a file.
-///
+/// Creates a `MainEditor` instance from a file///
 /// Reads the file at `p`, converts its content to a `VecBuffer`,
 /// and initializes a `MainEditor` with this buffer.
 ///

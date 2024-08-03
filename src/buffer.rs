@@ -39,13 +39,10 @@ pub trait TextBuffer {
     /// Get the contents of a specific line
     fn line(&self, line_number: usize) -> Result<&str>;
 
-    // In future versions Find should be adjusted to take a self-defined Pattern type much like
-    // https://doc.rust-lang.org/std/str/pattern/trait.Pattern.html
-    // with the goal of allowing accepting all necessary types - closures, Regex, chars, and strs
-    /// Find the next occurrence of a substring
+    /// Find the next occurrence of a Pattern
     fn find(&self, query: impl Pattern, at: LineCol) -> Result<LineCol>;
 
-    /// Find the previous occurrence of a substring
+    /// Find the previous occurrence of a Pattern
     fn rfind(&self, query: impl AsRef<str>, at: LineCol) -> Result<LineCol>;
 
     /// Undo the last operation
@@ -70,6 +67,7 @@ pub trait TextBuffer {
     fn is_command_empty(&self) -> bool;
     fn clear_command(&mut self);
     fn max_linecol(&self) -> LineCol;
+    fn delete_line(&mut self, at: usize);
 }
 
 /// A stack implementation using a `VecDeque` as the underlying storage.
@@ -207,6 +205,9 @@ impl VecBuffer {
 }
 
 impl TextBuffer for VecBuffer {
+    fn delete_line(&mut self, at: usize) {
+        let _ = self.text.remove(at);
+    }
     fn clear_command(&mut self) {
         self.command.clear();
         self.command.push(String::default());

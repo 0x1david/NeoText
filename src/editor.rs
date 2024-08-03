@@ -95,7 +95,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             Err(_) => panic!("UnexpectedError, please contact the developers.")
         }
     }
-    fn push(&mut self, c: char) {
+    pub fn push(&mut self, c: char) {
         match self.buffer.insert(self.pos(), c) {
             Ok(new_pos) => self.go(new_pos),
             Err(Error::InvalidPosition) => panic!("Cursor found in a position it should never appear in: ({}), please contact the developers.", self.pos()),
@@ -130,7 +130,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
                 _ => self.buffer.clear_command(),
             }
             let _ = match self.mode {
-                Modal::Normal => self.run_normal(None),
+                Modal::Normal => self.run_normal(None, None),
                 Modal::Find(find_mode) => {
                     if self.buffer.is_command_empty() {
                         match find_mode {

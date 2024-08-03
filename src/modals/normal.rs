@@ -5,7 +5,7 @@ use crossterm::event::{self, Event, KeyCode};
 use crate::{
     bars::{draw_bar, get_info_bar_content, get_notif_bar_content, INFO_BAR, NOTIFICATION_BAR},
     buffer::TextBuffer,
-    cursor::Cursor,
+    cursor::{Cursor, LineCol},
     editor::Editor,
     notif_bar, repeat, Result,
 };
@@ -13,7 +13,11 @@ use crate::{
 use super::{FindMode, Modal};
 
 impl<Buff: TextBuffer> Editor<Buff> {
-    pub(crate) fn run_normal(&mut self, carry_over: Option<i32>) -> Result<()> {
+    pub(crate) fn run_normal(
+        &mut self,
+        carry_over: Option<i32>,
+        prev_char: Option<char>,
+    ) -> Result<()> {
         self.draw_rows()?;
         draw_bar(&INFO_BAR, |term_width, _| {
             get_info_bar_content(term_width, &self.mode, &self.pos())
@@ -23,9 +27,15 @@ impl<Buff: TextBuffer> Editor<Buff> {
 
         if let Event::Key(key_event) = event::read()? {
             match key_event.code {
-                KeyCode::Char(ch) => self.handle_char_input(ch, carry_over)?,
-                KeyCode::End => self.move_to_end_of_line()?,
-                KeyCode::Home => self.move_to_first_col()?,
+                KeyCode::Char(ch) => {
+                    if let Some(prev) = prev_char {
+                        self.handle_combination_input(ch, carry_over, prev)?;
+                    } else {
+                        self.handle_char_input(ch, carry_over)?;
+                    }
+                }
+                KeyCode::End => self.move_to_end_of_line(),
+                KeyCode::Home => self.move_to_first_col(),
                 KeyCode::Esc => exit(0),
                 _ => {
                     notif_bar!("nothing");
@@ -35,8 +45,39 @@ impl<Buff: TextBuffer> Editor<Buff> {
 
         Ok(())
     }
+    fn handle_combination_input(
+        &mut self,
+        ch: char,
+        carry_over: Option<i32>,
+        prev: char,
+    ) -> Result<()> {
+        match (prev, ch) {
+            ('d', 'd') => repeat!(self.buffer.delete_line(self.pos().line); carry_over),
+            ('g', 'g') => {
+                let col = self.pos().col;
+                self.go(LineCol { line: 0, col });
+            }
+            ('t', pat) => {
+                repeat! {{
+                    let mut dest = self.buffer.find(pat, self.pos())?;
+                    dest.col -= 1;
+                    self.go(dest);
+                }; carry_over
+                }
+            }
+            ('f', pat) => repeat!(self.go(self.buffer.find(pat, self.pos())?); carry_over),
+            ('r', pat) => self.replace_under_cursor(pat)?,
+            (_, _) => {
+                notif_bar!("nothing");
+            }
+        }
+        Ok(())
+    }
     fn handle_char_input(&mut self, ch: char, carry_over: Option<i32>) -> Result<()> {
         match ch {
+            combination @ ('r' | 't' | 'd' | 'y' | 'z' | 'f' | 'g') => {
+                self.run_normal(carry_over, Some(combination))?;
+            }
             'i' => self.set_mode(Modal::Insert),
             'o' => {
                 self.set_mode(Modal::Insert);
@@ -51,17 +92,22 @@ impl<Buff: TextBuffer> Editor<Buff> {
             'j' => repeat!(self.if_within_bounds(Cursor::bump_down); carry_over),
             'W' => repeat!(self.move_to_next_word_after_whitespace()?; carry_over),
             'w' => repeat!(self.move_to_next_non_alphanumeric()?; carry_over),
-            'G' => self.move_to_lowest_line()?,
+            'G' => self.move_to_lowest_line(),
             'x' => self.delete_under_cursor()?,
             'X' => self.delete_before_cursor()?,
-            'A' => self.move_to_end_of_line_and_insert()?,
+            'A' => self.move_to_end_of_line_and_insert(),
             '_' => self.move_to_first_non_whitespace_col()?,
-            '$' => self.move_to_end_of_line()?,
+            '$' => self.move_to_end_of_line(),
             '0'..='9' => self.handle_number_input(ch, carry_over),
             _ => {
                 notif_bar!("nothing");
             }
         }
+        Ok(())
+    }
+    fn replace_under_cursor(&mut self, ch: char) -> Result<()> {
+        self.delete_under_cursor()?;
+        self.push(ch);
         Ok(())
     }
     fn delete_under_cursor(&mut self) -> Result<()> {
@@ -76,30 +122,26 @@ impl<Buff: TextBuffer> Editor<Buff> {
         self.go(dest);
         Ok(())
     }
-    fn move_to_end_of_line_and_insert(&mut self) -> Result<()> {
-        self.move_to_end_of_line()?;
+    fn move_to_end_of_line_and_insert(&mut self) {
+        self.move_to_end_of_line();
         self.set_mode(Modal::Insert);
-        Ok(())
     }
-    fn move_to_lowest_line(&mut self) -> Result<()> {
+    fn move_to_lowest_line(&mut self) {
         let mut pos = self.pos();
         let dest = self.buffer.max_line();
         pos.line = dest;
         self.go(pos);
-        Ok(())
     }
-    fn move_to_end_of_line(&mut self) -> Result<()> {
+    fn move_to_end_of_line(&mut self) {
         let mut pos = self.pos();
         let dest = self.buffer.max_col(pos);
         pos.col = dest;
         self.go(pos);
-        Ok(())
     }
-    fn move_to_first_col(&mut self) -> Result<()> {
+    fn move_to_first_col(&mut self) {
         let mut pos = self.pos();
         pos.col = 0;
         self.go(pos);
-        Ok(())
     }
     fn move_to_first_non_whitespace_col(&mut self) -> Result<()> {
         let mut pos = self.pos();
@@ -110,7 +152,9 @@ impl<Buff: TextBuffer> Editor<Buff> {
     }
     fn move_to_next_word_after_whitespace(&mut self) -> Result<()> {
         let mut pos = self.pos();
-        if self.buffer.max_col(pos) > pos.col {pos.col += 1};
+        if self.buffer.max_col(pos) > pos.col {
+            pos.col += 1;
+        };
 
         let mut dest = self.buffer.find(char::is_whitespace, pos)?;
         dest = self.buffer.find(|ch| !char::is_whitespace(ch), dest)?;
@@ -120,7 +164,9 @@ impl<Buff: TextBuffer> Editor<Buff> {
 
     fn move_to_next_non_alphanumeric(&mut self) -> Result<()> {
         let mut pos = self.pos();
-        if self.buffer.max_col(pos) > pos.col {pos.col += 1};
+        if self.buffer.max_col(pos) > pos.col {
+            pos.col += 1;
+        };
 
         pos.col += 1;
         let dest = self.buffer.find(|ch| !char::is_alphanumeric(ch), pos)?;
@@ -132,7 +178,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         let new_carry_over = carry_over.map_or(digit, |current_carry_over| {
             concatenate_ints(current_carry_over, digit)
         });
-        let _ = self.run_normal(Some(new_carry_over));
+        let _ = self.run_normal(Some(new_carry_over), None);
     }
 }
 

@@ -9,7 +9,7 @@
 //      return LineCol nonspace;
 // }
 //
-// So essentially what I need is for each type to implement a function that takes a Vec<AsRef<str>>
+// So essentially what I need is for each type to implement a function that takes a &[impl AsRef<str>]
 // and returns a LineCol
 
 use std::borrow::Cow;
