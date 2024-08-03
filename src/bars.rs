@@ -1,4 +1,4 @@
-use crate::Result;
+use crate::{cursor::LineCol, modals::Modal, Result};
 use crossterm::{
     execute,
     style::{self, Color},
@@ -32,12 +32,8 @@ pub const INFO_BAR: BarInfo = BarInfo::new(
     Color::DarkGrey,
 );
 
-pub const COMMAND_BAR: BarInfo = BarInfo::new(
-    NOTIFICATION_BAR_Y_LOCATION ,
-    0,
-    DEFAULT_FG,
-    DEFAULT_BG,
-);
+pub const COMMAND_BAR: BarInfo =
+    BarInfo::new(NOTIFICATION_BAR_Y_LOCATION, 0, DEFAULT_FG, DEFAULT_BG);
 
 static DEBUG_MESSAGES: OnceLock<Mutex<VecDeque<String>>> = OnceLock::new();
 
@@ -197,4 +193,45 @@ pub fn get_notif_bar_content() -> String {
         .unwrap()
         .pop_front()
         .unwrap_or_default()
+}
+
+/// Draws the information bar at the bottom of the editor.
+///
+/// This function renders an information bar that displays the current cursor position
+/// and potentially other editor status information.
+///
+/// # Display Characteristics
+/// - Location: Positioned `INFO_BAR_Y_LOCATION` lines from the bottom of the terminal.
+/// - Background: Dark grey
+/// - Text Color: White
+/// - Content: Displays the cursor position, starting at `INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION`
+///
+/// # Returns
+/// `Ok(())` if the info bar is successfully drawn, or an error if any terminal operation fails.
+///
+/// # Errors
+/// This function can return an error if:
+/// - Terminal size cannot be determined
+/// - Cursor movement fails
+/// - Writing to stdout fails
+/// - Color setting or resetting fails
+pub fn get_info_bar_content(term_width: usize, mode: &Modal, pos: &LineCol) -> String {
+    let modal_string = format!("{}", mode);
+    let pos_string = format!("{}", pos);
+
+    let middle_space = term_width
+        - INFO_BAR_MODAL_INDICATOR_X_LOCATION as usize
+        - modal_string.len()
+        - pos_string.len()
+        - INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE as usize;
+
+    #[allow(clippy::repeat_once)]
+    let loc_neg = " ".repeat(INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE as usize);
+    format!(
+        "{}{}{}{}",
+        modal_string,
+        " ".repeat(middle_space),
+        pos_string,
+        loc_neg
+    )
 }

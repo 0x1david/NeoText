@@ -233,8 +233,7 @@ impl TextBuffer for VecBuffer {
         LineCol { line, col }
     }
     fn insert_newline(&mut self, mut at: LineCol) -> LineCol {
-        self.get_mut_buffer()
-            .insert(at.line + 1, String::default());
+        self.get_mut_buffer().insert(at.line + 1, String::default());
         at.line += 1;
         at.col = 0;
         at

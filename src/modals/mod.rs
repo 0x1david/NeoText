@@ -1,5 +1,4 @@
 mod modal;
 mod normal;
 
-pub use modal::{Modal, FindMode};
-
+pub use modal::{FindMode, Modal};

@@ -18,8 +18,7 @@ pub enum FindMode {
     Backwards,
 }
 
-impl Modal {
-}
+impl Modal {}
 
 impl Display for Modal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -1,8 +1,7 @@
 #![allow(clippy::match_wild_err_arm)]
 use crate::bars::{
-    get_notif_bar_content, draw_bar, get_debug_messages, COMMAND_BAR, INFO_BAR,
-    INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE, INFO_BAR_MODAL_INDICATOR_X_LOCATION,
-    INFO_BAR_Y_LOCATION, NOTIFICATION_BAR, NOTIFICATION_BAR_Y_LOCATION,
+    draw_bar, get_debug_messages, get_info_bar_content, get_notif_bar_content, COMMAND_BAR,
+    INFO_BAR, INFO_BAR_Y_LOCATION, NOTIFICATION_BAR, NOTIFICATION_BAR_Y_LOCATION,
 };
 use crate::buffer::TextBuffer;
 use crate::cursor::{Cursor, LineCol};
@@ -25,10 +24,25 @@ pub struct Editor<Buff: TextBuffer> {
     /// process a better data structure will have to be found and vec replaced;
     pub(crate) cursor: Cursor,
     pub(crate) buffer: Buff,
-    mode: Modal,
+    pub(crate) mode: Modal,
 }
 
 impl<Buff: TextBuffer> Editor<Buff> {
+    /// Creates a new instance of `MainEditor`.
+    ///
+    /// # Arguments
+    /// * `buffer` - The text buffer to be edited.
+    ///
+    /// # Returns
+    /// A new `MainEditor` instance initialized with the given buffer and default cursor position.
+    pub fn new(buffer: Buff) -> Self {
+        Self {
+            buffer,
+            cursor: Cursor::default(),
+            mode: Modal::default(),
+        }
+    }
+
     /// Applies a cursor movement if it results in a valid position within the buffer bounds.
     ///
     /// # Arguments
@@ -91,23 +105,6 @@ impl<Buff: TextBuffer> Editor<Buff> {
     }
     pub fn newline(&mut self) {
         self.cursor.pos = self.buffer.insert_newline(self.pos());
-    }
-}
-
-impl<Buff: TextBuffer> Editor<Buff> {
-    /// Creates a new instance of `MainEditor`.
-    ///
-    /// # Arguments
-    /// * `buffer` - The text buffer to be edited.
-    ///
-    /// # Returns
-    /// A new `MainEditor` instance initialized with the given buffer and default cursor position.
-    pub fn new(buffer: Buff) -> Self {
-        Self {
-            buffer,
-            cursor: Cursor::default(),
-            mode: Modal::default(),
-        }
     }
 
     /// Runs the main editor loop.
@@ -177,6 +174,8 @@ impl<Buff: TextBuffer> Editor<Buff> {
                 }
             };
         }
+        terminal::disable_raw_mode()?;
+        execute!(stdout(), terminal::Clear(ClearType::All))?;
         Ok(())
     }
 
@@ -187,7 +186,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     fn run_insert(&mut self) -> Result<()> {
         self.draw_rows()?;
         draw_bar(&INFO_BAR, |term_width, _| {
-            self.get_info_bar_content(term_width)
+            get_info_bar_content(term_width, &self.mode, &self.pos())
         })?;
         draw_bar(&NOTIFICATION_BAR, |_, _| get_notif_bar_content())?;
         self.move_cursor();
@@ -212,7 +211,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     fn run_command(&mut self) -> Result<bool> {
         self.draw_rows()?;
         draw_bar(&INFO_BAR, |term_width, _| {
-            self.get_info_bar_content(term_width)
+            get_info_bar_content(term_width, &self.mode, &self.pos())
         })?;
         draw_bar(&COMMAND_BAR, |_, _| {
             self.buffer.get_command_text()[0].to_string()
@@ -237,10 +236,6 @@ impl<Buff: TextBuffer> Editor<Buff> {
         };
         Ok(false)
     }
-    //         terminal::disable_raw_mode()?;
-    //         execute!(stdout, terminal::Clear(ClearType::All))?;
-    //         Ok(())
-    //     }
 
     /// Draws the main content of the editor.
     ///
@@ -263,8 +258,9 @@ impl<Buff: TextBuffer> Editor<Buff> {
             crossterm::cursor::MoveTo(0, 0)
         )?;
 
-        let split_line_n =
-            term_height as usize - 1 - (NOTIFICATION_BAR_Y_LOCATION as usize).max(INFO_BAR_Y_LOCATION as usize);
+        let split_line_n = term_height as usize
+            - 1
+            - (NOTIFICATION_BAR_Y_LOCATION as usize).max(INFO_BAR_Y_LOCATION as usize);
 
         for line in self.buffer.get_normal_text().iter().take(split_line_n) {
             execute!(stdout, terminal::Clear(ClearType::CurrentLine))?;
@@ -283,10 +279,15 @@ impl<Buff: TextBuffer> Editor<Buff> {
     /// # Errors
     /// This function can return an error if the terminal cursor movement operation fails.
     pub fn move_cursor(&self) {
-        let col = u16::try_from(self.cursor.col()).expect("Column location higher than 65356 is invalid");
+        let col =
+            u16::try_from(self.cursor.col()).expect("Column location higher than 65356 is invalid");
         let _ = execute!(
             stdout(),
-            crossterm::cursor::MoveTo(col, u16::try_from(self.cursor.line()).expect("More than 65356 lines in a single file are currently unsupported."))
+            crossterm::cursor::MoveTo(
+                col,
+                u16::try_from(self.cursor.line())
+                    .expect("More than 65356 lines in a single file are currently unsupported.")
+            )
         );
     }
 
@@ -294,115 +295,10 @@ impl<Buff: TextBuffer> Editor<Buff> {
         let _ = execute!(
             stdout(),
             crossterm::cursor::MoveTo(
-                u16::try_from(self.cursor.col()).expect("Column location lower than 0 or higher than 65356 is invalid"),
+                u16::try_from(self.cursor.col())
+                    .expect("Column location lower than 0 or higher than 65356 is invalid"),
                 term_size - (NOTIFICATION_BAR_Y_LOCATION)
             )
         );
     }
-
-
-    /// Draws the information bar at the bottom of the editor.
-    ///
-    /// This function renders an information bar that displays the current cursor position
-    /// and potentially other editor status information.
-    ///
-    /// # Display Characteristics
-    /// - Location: Positioned `INFO_BAR_Y_LOCATION` lines from the bottom of the terminal.
-    /// - Background: Dark grey
-    /// - Text Color: White
-    /// - Content: Displays the cursor position, starting at `INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION`
-    ///
-    /// # Returns
-    /// `Ok(())` if the info bar is successfully drawn, or an error if any terminal operation fails.
-    ///
-    /// # Errors
-    /// This function can return an error if:
-    /// - Terminal size cannot be determined
-    /// - Cursor movement fails
-    /// - Writing to stdout fails
-    /// - Color setting or resetting fails
-    pub fn get_info_bar_content(&self, term_width: usize) -> String {
-        let modal_string = format!("{}", self.mode);
-        let pos_string = format!("{}", self.pos());
-
-        let middle_space = term_width
-            - INFO_BAR_MODAL_INDICATOR_X_LOCATION as usize
-            - modal_string.len()
-            - pos_string.len()
-            - INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE as usize;
-
-        #[allow(clippy::repeat_once)]
-        let loc_neg = " ".repeat(INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE as usize);
-        format!(
-            "{}{}{}{}",
-            modal_string,
-            " ".repeat(middle_space),
-            pos_string,
-            loc_neg
-        )
-    }
-
-    //     fn insert_char(&mut self, c: char) {
-    //         let current_line = &mut self.content[self.cursor_y];
-    //         current_line.insert(self.cursor_x, c);
-    //         self.cursor_x += 1;
-    //     }
-
-    //     fn insert_newline(&mut self) {
-    //         let current_line = &mut self.content[self.cursor_y];
-    //         let rest_of_line = current_line.split_off(self.cursor_x);
-    //         self.content.insert(self.cursor_y + 1, rest_of_line);
-    //         self.cursor_y += 1;
-    //         self.cursor_x = 0;
-    //     }
-
-    //     fn delete_char(&mut self) {
-    //         let current_line = &mut self.content[self.cursor_y];
-    //         if self.cursor_x > 0 {
-    //             current_line.remove(self.cursor_x - 1);
-    //             self.cursor_x -= 1;
-    //         } else if self.cursor_y > 0 {
-    //             let line = self.content.remove(self.cursor_y);
-    //             self.cursor_y -= 1;
-    //             self.cursor_x = self.content[self.cursor_y].len();
-    //             self.content[self.cursor_y].push_str(&line);
-    //         }
-    //     }
-
-    //     fn move_cursor_left(&mut self) {
-    //         if self.cursor_x > 0 {
-    //             self.cursor_x -= 1;
-    //         } else if self.cursor_y > 0 {
-    //             self.cursor_y -= 1;
-    //             self.cursor_x = self.content[self.cursor_y].len();
-    //         }
-    //     }
-
-    //     fn move_cursor_right(&mut self) {
-    //         if self.cursor_x < self.content[self.cursor_y].len() {
-    //             self.cursor_x += 1;
-    //         } else if self.cursor_y < self.content.len() - 1 {
-    //             self.cursor_y += 1;
-    //             self.cursor_x = 0;
-    //         }
-    //     }
-
-    //     fn move_cursor_up(&mut self) {
-    //         if self.cursor_y > 0 {
-    //             self.cursor_y -= 1;
-    //             self.cursor_x = self.cursor_x.min(self.content[self.cursor_y].len());
-    //         }
-    //     }
-
-    //     fn move_cursor_down(&mut self) {
-    //         if self.cursor_y < self.content.len() - 1 {
-    //             self.cursor_y += 1;
-    //             self.cursor_x = self.cursor_x.min(self.content[self.cursor_y].len());
-    //         }
-    //     }
-    // }
-    //
-    //
-    //
-    //
 }
