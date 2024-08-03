@@ -1,6 +1,6 @@
 use std::process::exit;
 
-use crossterm::event::{self, Event, KeyCode};
+use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 
 use crate::{
     bars::{draw_bar, get_info_bar_content, get_notif_bar_content, INFO_BAR, NOTIFICATION_BAR},
@@ -26,17 +26,19 @@ impl<Buff: TextBuffer> Editor<Buff> {
         self.move_cursor();
 
         if let Event::Key(key_event) = event::read()? {
-            match key_event.code {
-                KeyCode::Char(ch) => {
+            match (key_event.code, key_event.modifiers) {
+                (KeyCode::Char(ch), mods) => {
                     if let Some(prev) = prev_char {
                         self.handle_combination_input(ch, carry_over, prev)?;
+                    } else if !key_event.modifiers.is_empty(){
+                        self.handle_modifiers(ch, carry_over, mods)?;
                     } else {
                         self.handle_char_input(ch, carry_over)?;
                     }
                 }
-                KeyCode::End => self.move_to_end_of_line(),
-                KeyCode::Home => self.move_to_first_col(),
-                KeyCode::Esc => exit(0),
+                (KeyCode::End, _) => self.move_to_end_of_line(),
+                (KeyCode::Home, _) => self.move_to_first_col(),
+                (KeyCode::Esc, _) => exit(0),
                 _ => {
                     notif_bar!("nothing");
                 }
@@ -72,6 +74,13 @@ impl<Buff: TextBuffer> Editor<Buff> {
             }
         }
         Ok(())
+    }
+    /// Unnecessary until redo and scrolling
+    fn handle_modifiers(&mut self, ch: char, carry_over: Option<i32>, modifiers: KeyModifiers) -> Result<()> {
+        if modifiers.contains(KeyModifiers::CONTROL) {
+        };
+        Ok(())
+
     }
     fn handle_char_input(&mut self, ch: char, carry_over: Option<i32>) -> Result<()> {
         match ch {
