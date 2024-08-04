@@ -14,9 +14,12 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 
+use std::collections::VecDeque;
 // use crate::modal::Modal;
 use std::io::stdout;
 use std::process::exit;
+
+const MAX_HISTORY: usize = 50;
 
 /// The main editor is used as the main API for all commands
 pub struct Editor<Buff: TextBuffer> {
@@ -26,6 +29,10 @@ pub struct Editor<Buff: TextBuffer> {
     pub(crate) prev_pos: LineCol,
     pub(crate) buffer: Buff,
     pub(crate) mode: Modal,
+    pub(crate) command_history: VecDeque<String>,
+    pub(crate) forwards_history: VecDeque<String>,
+    pub(crate) backwards_history: VecDeque<String>,
+    pub(crate) history_pointer: u8,
 }
 
 impl<Buff: TextBuffer> Editor<Buff> {
@@ -42,7 +49,43 @@ impl<Buff: TextBuffer> Editor<Buff> {
             prev_pos: LineCol { line: 0, col: 0 },
             cursor: Cursor::default(),
             mode: Modal::default(),
+            command_history: VecDeque::new(),
+            forwards_history: VecDeque::new(),
+            backwards_history: VecDeque::new(),
+            history_pointer: 0,
         }
+    }
+
+    /// Stores a command in the search history
+    fn add_to_search_history(&mut self, command: String) {
+        self.forwards_history.push_front(command);
+        if self.forwards_history.len() > MAX_HISTORY {
+            self.forwards_history.pop_back();
+        }
+    }
+    fn get_from_search_history(&self, nth: u8, find_mode: FindMode) -> Option<String> {
+        match find_mode {
+            FindMode::Forwards => self.forwards_history.get(nth as usize).cloned(),
+            FindMode::Backwards => self.backwards_history.get(nth as usize).cloned(),
+        }
+    }
+    fn replay_from_search_history(&self) -> Result<()> {
+        let pat = self
+            .forwards_history
+            .front()
+            .map(String::as_str)
+            .ok_or(Error::NoCommandAvailable)?;
+        let (flag, pat) = pat.split_at(1);
+        match flag {
+            "/" => self.buffer.find(pat, self.last_normal_pos())?,
+            "?" => self.buffer.rfind(pat, self.last_normal_pos())?,
+            otherwise => Err(Error::ProgrammingBug {
+                descr: format!(
+                    "Only commands starting with `?` or `/` should be found {otherwise}"
+                ),
+            })?,
+        };
+        Ok(())
     }
 
     /// If the cursor is in an invalid position, applies a cursor movement that results in a valid position within the buffer bounds.
@@ -134,11 +177,19 @@ impl<Buff: TextBuffer> Editor<Buff> {
                         }
                     }
                     if self.run_command()? {
-                        let pattern = &self.buffer.get_command_text()[0][1..];
+                        let pat = &self.buffer.get_command_text()[0][1..];
+                        let history_pat;
                         let result = match find_mode {
-                            FindMode::Forwards => self.buffer.find(pattern, self.last_normal_pos()),
-                            FindMode::Backwards => self.buffer.rfind(pattern, self.last_normal_pos())
+                            FindMode::Forwards => {
+                                history_pat = format!("/{pat}");
+                                self.buffer.find(pat, self.last_normal_pos())
+                            }
+                            FindMode::Backwards => {
+                                history_pat = format!("?{pat}");
+                                self.buffer.rfind(pat, self.last_normal_pos())
+                            }
                         };
+                        self.add_to_search_history(history_pat.to_string());
                         match result {
                             Err(Error::InvalidInput) => notif_bar!("Empty find query.";),
                             Err(Error::PatternNotFound) => notif_bar!("No matches found for your pattern";),
@@ -213,9 +264,44 @@ impl<Buff: TextBuffer> Editor<Buff> {
         self.move_command_cursor(term_height);
 
         if let Event::Key(key_event) = event::read()? {
+            if key_event.code != KeyCode::Up && key_event.code != KeyCode::Down {
+                self.history_pointer = 0
+            }
             match key_event.code {
                 KeyCode::Enter => return Ok(true),
                 KeyCode::Char(c) => self.push(c),
+                KeyCode::Up => {
+                    if self.history_pointer < 50 {
+                        match &self.mode {
+                            Modal::Find(find_mode) => {
+                                let hist = self.get_from_search_history(self.history_pointer, *find_mode);
+                                self.history_pointer += 1;
+                                if let Some(h) = hist {
+                                    if !h.is_empty() {
+                                        self.buffer.replace_command_text(h)
+                                    }
+                                }
+                            }
+                            Modal::Command => unimplemented!(),
+                            otherwise => Err(Error::ProgrammingBug {descr: format!("A different mode than Find or Command set as editor modal while working in the command bar `{otherwise}`")})?
+                        }
+                    }
+                }
+                KeyCode::Down => {
+                    if self.history_pointer != 0 {
+                        match &self.mode {
+                            Modal::Find(find_mode) => {
+                                    self.history_pointer -= 1;
+                                    let hist = self.get_from_search_history(self.history_pointer, *find_mode);
+                                    if let Some(h) = hist {
+                                        self.buffer.replace_command_text(h)
+                                    }
+                                }
+                            Modal::Command => unimplemented!(),
+                            otherwise => Err(Error::ProgrammingBug {descr: format!("A different mode than Find or Command set as editor modal while working in the command bar `{otherwise}`")})?
+                        }
+                    }
+                }
                 KeyCode::Backspace => self.delete(),
                 KeyCode::Left => self.cursor.bump_left(),
                 KeyCode::Right => self.cursor.bump_right(),

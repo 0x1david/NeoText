@@ -30,7 +30,9 @@ impl<Buff: TextBuffer> Editor<Buff> {
                 (KeyCode::Char(ch), mods) => {
                     if let Some(prev) = prev_char {
                         self.handle_combination_input(ch, carry_over, prev)?;
-                    } else if !(key_event.modifiers.is_empty() || (mods == KeyModifiers::SHIFT && ch.is_alphabetic())) {
+                    } else if !(key_event.modifiers.is_empty()
+                        || (mods == KeyModifiers::SHIFT && ch.is_alphabetic()))
+                    {
                         self.handle_modifiers(ch, carry_over, mods)?;
                     } else {
                         self.handle_char_input(ch, carry_over)?;
@@ -53,7 +55,6 @@ impl<Buff: TextBuffer> Editor<Buff> {
         carry_over: Option<i32>,
         prev: char,
     ) -> Result<()> {
-
         match (prev, ch) {
             ('d', 'd') => repeat!(self.buffer.delete_line(self.pos().line); carry_over),
             ('g', 'g') => {
@@ -72,7 +73,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
     fn find_next_char(&mut self, pat: char, carry_over: Option<i32>) -> Result<()> {
-        repeat!{{
+        repeat! {{
             let mut pos_without_current_loc = self.pos();
             pos_without_current_loc.col += 1;
             self.go(self.buffer.find(pat, pos_without_current_loc)?);
@@ -81,7 +82,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     }
 
     fn find_previous_char(&mut self, pat: char, carry_over: Option<i32>) -> Result<()> {
-        repeat!{{
+        repeat! {{
             self.go(self.buffer.rfind(pat, self.pos())?);
         }; carry_over}
         Ok(())
@@ -104,11 +105,14 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
     /// Unnecessary until redo and scrolling
-    fn handle_modifiers(&mut self, ch: char, carry_over: Option<i32>, modifiers: KeyModifiers) -> Result<()> {
-        if modifiers.contains(KeyModifiers::CONTROL) {
-        };
+    fn handle_modifiers(
+        &mut self,
+        ch: char,
+        carry_over: Option<i32>,
+        modifiers: KeyModifiers,
+    ) -> Result<()> {
+        if modifiers.contains(KeyModifiers::CONTROL) {};
         Ok(())
-
     }
     fn handle_char_input(&mut self, ch: char, carry_over: Option<i32>) -> Result<()> {
         match ch {

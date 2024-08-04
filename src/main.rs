@@ -1,11 +1,11 @@
 // Features to implement:
+//      Regex Command Processing
 //      create a better DS for buffer
-//      rfind Pattern and rfind on editor
 //      Marks
 //      Undo and Redo
+//      Command History
 //      Configuration parsing and configurable controller
 //      Visual Mode
-//      Command History
 //      Macros
 //      Scrolling
 //      LSP Integration
@@ -43,7 +43,7 @@ fn main() {
     let _ = terminal::disable_raw_mode();
 }
 
-/// Creates a `MainEditor` instance from a file///
+/// Creates a `MainEditor` instance from a file/
 /// Reads the file at `p`, converts its content to a `VecBuffer`,
 /// and initializes a `MainEditor` with this buffer.
 ///

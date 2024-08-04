@@ -147,7 +147,7 @@ where
                     .position(self)
                     .map(|rcol| LineCol {
                         line: line_num,
-                        col: line_content.as_ref().len() -  rcol
+                        col: line_content.as_ref().len() - rcol,
                     })
             })
     }

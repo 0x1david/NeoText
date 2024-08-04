@@ -9,6 +9,10 @@ pub enum Error {
     InvalidLineNumber,
     InvalidInput,
     PatternNotFound,
+    NoCommandAvailable,
+    ProgrammingBug {
+        descr: String,
+    },
     NowhereToGo,
     ImATeacup,
 

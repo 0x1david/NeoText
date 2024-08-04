@@ -59,6 +59,8 @@ pub trait TextBuffer {
     fn get_terminal_text(&self) -> &str;
     /// Get the entire text for the command buffer
     fn get_command_text(&self) -> &[String];
+    /// Get the entire text for the command buffer
+    fn replace_command_text(&mut self, new: String);
 
     /// Get maximum line bound for the current buffer
     fn max_line(&self) -> usize;
@@ -205,6 +207,9 @@ impl VecBuffer {
 }
 
 impl TextBuffer for VecBuffer {
+    fn replace_command_text(&mut self, new: String) {
+        self.command = vec![new]
+    }
     fn delete_line(&mut self, at: usize) {
         let _ = self.text.remove(at);
     }
@@ -343,11 +348,11 @@ impl TextBuffer for VecBuffer {
     /// ```
     fn rfind(&self, query: impl Pattern, at: LineCol) -> Result<LineCol> {
         query
-            .rfind_pattern(&self.get_partial_buffer(None, Some(at))?)
+            .find_pattern(&self.get_partial_buffer(None, Some(at))?)
             .ok_or(Error::PatternNotFound)
             .map(|v| LineCol {
                 line: v.line,
-                col: v.col
+                col: v.col,
             })
     }
 
