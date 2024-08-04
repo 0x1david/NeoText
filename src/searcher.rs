@@ -25,6 +25,7 @@ pub trait Pattern {
     ///
     /// Thus find and rfind will require to be split at the cursor
     fn find_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol>;
+    fn rfind_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol>;
 }
 
 impl Pattern for &str {
@@ -34,6 +35,18 @@ impl Pattern for &str {
             .enumerate()
             .find_map(|(line_num, line_content)| {
                 line_content.as_ref().find(self).map(|col| LineCol {
+                    line: line_num,
+                    col,
+                })
+            })
+    }
+    fn rfind_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+        haystack
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(line_num, line_content)| {
+                line_content.as_ref().rfind(self).map(|col| LineCol {
                     line: line_num,
                     col,
                 })
@@ -62,11 +75,17 @@ impl Pattern for String {
     fn find_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
         self.as_str().find_pattern(haystack)
     }
+    fn rfind_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+        self.as_str().rfind_pattern(haystack)
+    }
 }
 
 impl Pattern for Cow<'_, str> {
     fn find_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
         self.as_ref().find_pattern(haystack)
+    }
+    fn rfind_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+        self.as_ref().rfind_pattern(haystack)
     }
 }
 
@@ -77,6 +96,18 @@ impl Pattern for char {
             .enumerate()
             .find_map(|(line_num, line_content)| {
                 line_content.as_ref().find(*self).map(|col| LineCol {
+                    line: line_num,
+                    col,
+                })
+            })
+    }
+    fn rfind_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+        haystack
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(line_num, line_content)| {
+                line_content.as_ref().rfind(*self).map(|col| LineCol {
                     line: line_num,
                     col,
                 })
@@ -100,6 +131,23 @@ where
                     .map(|col| LineCol {
                         line: line_num,
                         col,
+                    })
+            })
+    }
+    fn rfind_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+        haystack
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(line_num, line_content)| {
+                line_content
+                    .as_ref()
+                    .chars()
+                    .rev()
+                    .position(self)
+                    .map(|rcol| LineCol {
+                        line: line_num,
+                        col: line_content.as_ref().len() -  rcol
                     })
             })
     }

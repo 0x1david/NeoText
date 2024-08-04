@@ -30,7 +30,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
                 (KeyCode::Char(ch), mods) => {
                     if let Some(prev) = prev_char {
                         self.handle_combination_input(ch, carry_over, prev)?;
-                    } else if !key_event.modifiers.is_empty(){
+                    } else if !(key_event.modifiers.is_empty() || (mods == KeyModifiers::SHIFT && ch.is_alphabetic())) {
                         self.handle_modifiers(ch, carry_over, mods)?;
                     } else {
                         self.handle_char_input(ch, carry_over)?;
@@ -53,26 +53,54 @@ impl<Buff: TextBuffer> Editor<Buff> {
         carry_over: Option<i32>,
         prev: char,
     ) -> Result<()> {
+
         match (prev, ch) {
             ('d', 'd') => repeat!(self.buffer.delete_line(self.pos().line); carry_over),
             ('g', 'g') => {
                 let col = self.pos().col;
                 self.go(LineCol { line: 0, col });
             }
-            ('t', pat) => {
-                repeat! {{
-                    let mut dest = self.buffer.find(pat, self.pos())?;
-                    dest.col -= 1;
-                    self.go(dest);
-                }; carry_over
-                }
-            }
-            ('f', pat) => repeat!(self.go(self.buffer.find(pat, self.pos())?); carry_over),
+            ('t', pat) => self.move_to_char(pat)?,
+            ('T', pat) => self.move_back_to_char(pat)?,
+            ('f', pat) => self.find_next_char(pat, carry_over)?,
+            ('F', pat) => self.find_previous_char(pat, carry_over)?,
             ('r', pat) => self.replace_under_cursor(pat)?,
             (_, _) => {
                 notif_bar!("nothing");
             }
         }
+        Ok(())
+    }
+    fn find_next_char(&mut self, pat: char, carry_over: Option<i32>) -> Result<()> {
+        repeat!{{
+            let mut pos_without_current_loc = self.pos();
+            pos_without_current_loc.col += 1;
+            self.go(self.buffer.find(pat, pos_without_current_loc)?);
+        }; carry_over}
+        Ok(())
+    }
+
+    fn find_previous_char(&mut self, pat: char, carry_over: Option<i32>) -> Result<()> {
+        repeat!{{
+            self.go(self.buffer.rfind(pat, self.pos())?);
+        }; carry_over}
+        Ok(())
+    }
+    fn move_to_char(&mut self, pat: char) -> Result<()> {
+        let dest = self.buffer.find(pat, self.pos())?;
+        self.go(dest);
+        let mut dest = self.pos();
+        dest.col -= 1;
+        self.go(dest);
+        Ok(())
+    }
+
+    fn move_back_to_char(&mut self, pat: char) -> Result<()> {
+        let dest = self.buffer.rfind(pat, self.pos())?;
+        self.go(dest);
+        let mut dest = self.pos();
+        dest.col += 1;
+        self.go(dest);
         Ok(())
     }
     /// Unnecessary until redo and scrolling
@@ -84,7 +112,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     }
     fn handle_char_input(&mut self, ch: char, carry_over: Option<i32>) -> Result<()> {
         match ch {
-            combination @ ('r' | 't' | 'd' | 'y' | 'z' | 'f' | 'g') => {
+            combination @ ('r' | 't' | 'd' | 'y' | 'z' | 'f' | 'g' | 'F' | 'T') => {
                 self.run_normal(carry_over, Some(combination))?;
             }
             'i' => self.set_mode(Modal::Insert),

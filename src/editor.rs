@@ -137,9 +137,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
                         let pattern = &self.buffer.get_command_text()[0][1..];
                         let result = match find_mode {
                             FindMode::Forwards => self.buffer.find(pattern, self.last_normal_pos()),
-                            FindMode::Backwards => {
-                                self.buffer.rfind(pattern, self.last_normal_pos())
-                            }
+                            FindMode::Backwards => self.buffer.rfind(pattern, self.last_normal_pos())
                         };
                         match result {
                             Err(Error::InvalidInput) => notif_bar!("Empty find query.";),

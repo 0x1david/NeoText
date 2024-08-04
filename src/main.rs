@@ -1,7 +1,6 @@
 // Features to implement:
-//      Handle ensuring position is in bounds within the loop as a separate loop factor
+//      create a better DS for buffer
 //      rfind Pattern and rfind on editor
-//      Combinations in Normal mode (CTRL, multiple key actions)
 //      Marks
 //      Undo and Redo
 //      Configuration parsing and configurable controller

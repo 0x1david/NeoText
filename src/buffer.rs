@@ -43,7 +43,7 @@ pub trait TextBuffer {
     fn find(&self, query: impl Pattern, at: LineCol) -> Result<LineCol>;
 
     /// Find the previous occurrence of a Pattern
-    fn rfind(&self, query: impl AsRef<str>, at: LineCol) -> Result<LineCol>;
+    fn rfind(&self, query: impl Pattern, at: LineCol) -> Result<LineCol>;
 
     /// Undo the last operation
     fn undo(&mut self, at: LineCol) -> Result<LineCol>;
@@ -341,29 +341,14 @@ impl TextBuffer for VecBuffer {
     /// let result = buffer.rfind("example", LineCol{line: 2, col: 15});
     /// assert_eq!(result, Ok(LineCol{line: 1, col: 5})); // Found on line 1, column 5
     /// ```
-    fn rfind(&self, query: impl AsRef<str>, at: LineCol) -> Result<LineCol> {
-        let query = query.as_ref();
-        if query.is_empty() {
-            return Err(Error::InvalidInput);
-        }
-
-        self.get_normal_text()
-            .iter()
-            .enumerate()
-            .take(at.line + 1)
-            .rev()
-            .find_map(|(line_num, line)| {
-                let end_col = if line_num == at.line {
-                    at.col
-                } else {
-                    line.len()
-                };
-                line[..end_col].rfind(query).map(|col| LineCol {
-                    line: line_num,
-                    col,
-                })
-            })
+    fn rfind(&self, query: impl Pattern, at: LineCol) -> Result<LineCol> {
+        query
+            .rfind_pattern(&self.get_partial_buffer(None, Some(at))?)
             .ok_or(Error::PatternNotFound)
+            .map(|v| LineCol {
+                line: v.line,
+                col: v.col
+            })
     }
 
     fn len(&self) -> usize {
