@@ -23,6 +23,7 @@ pub struct Editor<Buff: TextBuffer> {
     /// In the first implementation I will start with Vec, for simplicity, fairly early to the dev
     /// process a better data structure will have to be found and vec replaced;
     pub(crate) cursor: Cursor,
+    pub(crate) prev_pos: LineCol,
     pub(crate) buffer: Buff,
     pub(crate) mode: Modal,
 }
@@ -38,27 +39,15 @@ impl<Buff: TextBuffer> Editor<Buff> {
     pub fn new(buffer: Buff) -> Self {
         Self {
             buffer,
+            prev_pos: LineCol { line: 0, col: 0 },
             cursor: Cursor::default(),
             mode: Modal::default(),
         }
     }
 
-    /// Applies a cursor movement if it results in a valid position within the buffer bounds.
-    ///
-    /// # Arguments
-    /// * `movement` - A function that takes a mutable reference to a Cursor and moves it.
-    ///
-    /// # Behavior
-    /// 1. Stores the original cursor position.
-    /// 3. Applies the movement to the cursor.
-    /// 3. If the new line exceeds the buffer's max line, reverts to the original position.
-    /// 4. If the new column exceeds the max column for that line, adjusts to the max column.
-    pub fn if_within_bounds<F>(&mut self, movement: F)
-    where
-        F: FnOnce(&mut Cursor),
-    {
+    /// If the cursor is in an invalid position, applies a cursor movement that results in a valid position within the buffer bounds.
+    pub fn force_within_bounds(&mut self) {
         let original_pos = self.pos();
-        movement(&mut self.cursor);
         if self.pos().line > self.buffer.max_line() {
             self.cursor.pos = original_pos;
             return;
@@ -73,6 +62,11 @@ impl<Buff: TextBuffer> Editor<Buff> {
     #[inline]
     pub(crate) const fn pos(&self) -> LineCol {
         self.cursor.pos
+    }
+
+    #[inline]
+    pub(crate) const fn prev_pos(&self) -> LineCol {
+        self.prev_pos
     }
     const fn last_normal_pos(&self) -> LineCol {
         self.cursor.last_text_mode_pos
@@ -125,6 +119,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         terminal::enable_raw_mode()?;
 
         loop {
+            self.force_within_bounds();
             match self.mode {
                 Modal::Command | Modal::Find(_) => {}
                 _ => self.buffer.clear_command(),
@@ -197,10 +192,10 @@ impl<Buff: TextBuffer> Editor<Buff> {
                 KeyCode::Enter => self.newline(),
                 KeyCode::Esc => self.set_mode(Modal::Normal),
                 KeyCode::Backspace => self.delete(),
-                KeyCode::Left => self.if_within_bounds(Cursor::bump_left),
-                KeyCode::Right => self.if_within_bounds(Cursor::bump_right),
-                KeyCode::Up => self.if_within_bounds(Cursor::bump_up),
-                KeyCode::Down => self.if_within_bounds(Cursor::bump_down),
+                KeyCode::Left => self.cursor.bump_left(),
+                KeyCode::Right => self.cursor.bump_right(),
+                KeyCode::Up => self.cursor.bump_up(),
+                KeyCode::Down => self.cursor.bump_down(),
                 _ => {
                     notif_bar!("nothing");
                 }
@@ -224,8 +219,8 @@ impl<Buff: TextBuffer> Editor<Buff> {
                 KeyCode::Enter => return Ok(true),
                 KeyCode::Char(c) => self.push(c),
                 KeyCode::Backspace => self.delete(),
-                KeyCode::Left => self.if_within_bounds(Cursor::bump_left),
-                KeyCode::Right => self.if_within_bounds(Cursor::bump_right),
+                KeyCode::Left => self.cursor.bump_left(),
+                KeyCode::Right => self.cursor.bump_right(),
                 KeyCode::Esc => {
                     self.set_mode(Modal::Normal);
                 }

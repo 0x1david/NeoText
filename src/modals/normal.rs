@@ -5,7 +5,7 @@ use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use crate::{
     bars::{draw_bar, get_info_bar_content, get_notif_bar_content, INFO_BAR, NOTIFICATION_BAR},
     buffer::TextBuffer,
-    cursor::{Cursor, LineCol},
+    cursor::LineCol,
     editor::Editor,
     notif_bar, repeat, Result,
 };
@@ -95,10 +95,10 @@ impl<Buff: TextBuffer> Editor<Buff> {
             ':' => self.set_mode(Modal::Command),
             '/' => self.set_mode(Modal::Find(FindMode::Forwards)),
             '?' => self.set_mode(Modal::Find(FindMode::Backwards)),
-            'h' => repeat!(self.if_within_bounds(Cursor::bump_left); carry_over),
-            'l' => repeat!(self.if_within_bounds(Cursor::bump_right); carry_over),
-            'k' => repeat!(self.if_within_bounds(Cursor::bump_up); carry_over),
-            'j' => repeat!(self.if_within_bounds(Cursor::bump_down); carry_over),
+            'h' => repeat!(self.cursor.bump_left(); carry_over),
+            'l' => repeat!(self.cursor.bump_right(); carry_over),
+            'k' => repeat!(self.cursor.bump_up(); carry_over),
+            'j' => repeat!(self.cursor.bump_down(); carry_over),
             'W' => repeat!(self.move_to_next_word_after_whitespace()?; carry_over),
             'w' => repeat!(self.move_to_next_non_alphanumeric()?; carry_over),
             'G' => self.move_to_lowest_line(),
