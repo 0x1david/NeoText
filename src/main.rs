@@ -12,6 +12,8 @@
 //      Telescope
 //      Copy && Paste
 //      Programmable Extensions
+//      Screen Splits
+//      Commands
 #![allow(dead_code)]
 use std::{io::stdout, path::PathBuf};
 
@@ -19,7 +21,7 @@ mod error;
 use buffer::VecBuffer;
 use crossterm::{
     execute,
-    terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::EnterAlternateScreen,
 };
 use editor::Editor;
 use error::{Error, Result};
@@ -38,9 +40,11 @@ fn main() {
     // let mut editor = MainEditor::new(VecBuffer::default());
     let p = "/home/flxvs/repositories/rust/text-editor/src/buffer.rs".into();
     let mut editor = new_from_file(p);
-    let _ = editor.run();
-    let _ = execute!(stdout(), LeaveAlternateScreen);
-    let _ = terminal::disable_raw_mode();
+    match editor.run() {
+        Err(Error::ExitCall) => (),
+        Ok(_) => panic!("Editor should never return without an error"),
+        otherwise => panic!("Err of type {:?} should be handled before reaching the main function.", otherwise),
+    }
 }
 
 /// Creates a `MainEditor` instance from a file/

@@ -8,6 +8,7 @@ use crate::cursor::{Cursor, LineCol};
 use crate::modals::{FindMode, Modal};
 use crate::notif_bar;
 use crate::{Error, Result};
+use crossterm::terminal::LeaveAlternateScreen;
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
@@ -33,6 +34,14 @@ pub struct Editor<Buff: TextBuffer> {
     pub(crate) forwards_history: VecDeque<String>,
     pub(crate) backwards_history: VecDeque<String>,
     pub(crate) history_pointer: u8,
+}
+
+impl<Buff: TextBuffer> Drop for Editor<Buff> {
+    fn drop(&mut self) {
+        let _ = terminal::disable_raw_mode();
+        let _ = execute!(stdout(), terminal::Clear(ClearType::All));
+        let _ = execute!(stdout(), LeaveAlternateScreen);
+    }
 }
 
 impl<Buff: TextBuffer> Editor<Buff> {
@@ -64,9 +73,12 @@ impl<Buff: TextBuffer> Editor<Buff> {
         }
     }
     fn get_from_search_history(&self, nth: u8, find_mode: FindMode) -> Option<String> {
+        if nth == 0 {
+            return Some(String::new())
+        }
         match find_mode {
-            FindMode::Forwards => self.forwards_history.get(nth as usize).cloned(),
-            FindMode::Backwards => self.backwards_history.get(nth as usize).cloned(),
+            FindMode::Forwards => self.forwards_history.get((nth - 1) as usize).cloned(),
+            FindMode::Backwards => self.backwards_history.get((nth - 1) as usize).cloned(),
         }
     }
     fn replay_from_search_history(&self) -> Result<()> {
@@ -149,7 +161,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     /// This function:
     /// 1. Enables raw mode for the terminal.
     /// 2. Continuously draws the editor content and handles user input.
-    /// 3. Exits when the user presses the Esc key.
+    /// 3. Exits when the user presses the Esc key (Returning Exit Error)
     ///
     /// # Returns
     /// `Ok(())` if the editor runs and exits successfully, or an error if any operation fails.
@@ -167,61 +179,59 @@ impl<Buff: TextBuffer> Editor<Buff> {
                 Modal::Command | Modal::Find(_) => {}
                 _ => self.buffer.clear_command(),
             }
-            let _ = match self.mode {
-                Modal::Normal => self.run_normal(None, None),
-                Modal::Find(find_mode) => {
-                    if self.buffer.is_command_empty() {
-                        match find_mode {
-                            FindMode::Forwards => self.push('/'),
-                            FindMode::Backwards => self.push('?'),
-                        }
-                    }
-                    if self.run_command()? {
-                        let pat = &self.buffer.get_command_text()[0][1..];
-                        let history_pat;
-                        let result = match find_mode {
-                            FindMode::Forwards => {
-                                history_pat = format!("/{pat}");
-                                self.buffer.find(pat, self.last_normal_pos())
-                            }
-                            FindMode::Backwards => {
-                                history_pat = format!("?{pat}");
-                                self.buffer.rfind(pat, self.last_normal_pos())
-                            }
-                        };
-                        self.add_to_search_history(history_pat.to_string());
-                        match result {
-                            Err(Error::InvalidInput) => notif_bar!("Empty find query.";),
-                            Err(Error::PatternNotFound) => notif_bar!("No matches found for your pattern";),
-                            Err(_) => panic!("Unexpected error returned from find. Please contact the developers."),
-                            Ok(linecol) => self.cursor.last_text_mode_pos = linecol
-                        }
-                        self.set_mode(Modal::Normal);
-                    }
-                    Ok(())
-                }
-                Modal::Insert => self.run_insert(),
-                Modal::Visual => self.run_visual(),
-                Modal::Command => {
-                    if self.buffer.is_command_empty() {
-                        self.push(':');
-                    }
-                    if self.run_command()? {
-                        match self.buffer.get_command_text()[0].as_str() {
-                            ":q" => break,
-                            "/EXIT NOW" => exit(0),
-                            _ => {}
-                        };
-                        self.set_mode(Modal::Normal);
-                    }
-                    Ok(())
-                }
+            match self.mode {
+                Modal::Normal => self.run_normal(None, None)?,
+                Modal::Find(find_mode) => self.run_find(find_mode)?,
+                Modal::Insert => self.run_insert()?,
+                Modal::Visual => self.run_visual()?,
+                Modal::Command => self.run_command_mode()?,
             };
         }
-        terminal::disable_raw_mode()?;
-        execute!(stdout(), terminal::Clear(ClearType::All))?;
+    }
+
+    fn run_find(&mut self, find_mode: FindMode) -> Result<()> {
+        if self.buffer.is_command_empty() {
+            match find_mode {
+                FindMode::Forwards => self.push('/'),
+                FindMode::Backwards => self.push('?'),
+            }
+        }
+        if self.run_command()? {
+            let pat = &self.buffer.get_command_text()[0][1..];
+            let (history_pat, result) = match find_mode {
+                FindMode::Forwards => {
+                    (format!("/{pat}"), self.buffer.find(pat, self.last_normal_pos()))
+                }
+                FindMode::Backwards => {
+                    (format!("?{pat}"), self.buffer.rfind(pat, self.last_normal_pos()))
+                }
+            };
+            self.add_to_search_history(history_pat);
+            match result {
+                Err(Error::InvalidInput) => notif_bar!("Empty find query.";),
+                Err(Error::PatternNotFound) => notif_bar!("No matches found for your pattern";),
+                Err(_) => panic!("Unexpected error returned from find. Please contact the developers."),
+                Ok(linecol) => self.cursor.last_text_mode_pos = linecol
+            }
+            self.set_mode(Modal::Normal);
+        }
         Ok(())
     }
+
+    fn run_command_mode(&mut self) -> Result<()> {
+            if self.buffer.is_command_empty() {
+                self.push(':');
+            }
+            if self.run_command()? {
+                match self.buffer.get_command_text()[0].as_str() {
+                    ":q" => return Err(Error::ExitCall),
+                    "/EXIT NOW" => exit(0),
+                    _ => {}
+                };
+                self.set_mode(Modal::Normal);
+            }
+            Ok(())
+        }
 
     #[allow(clippy::unused_self, clippy::needless_pass_by_ref_mut)]
     fn run_visual(&mut self) -> Result<()> {
@@ -252,6 +262,24 @@ impl<Buff: TextBuffer> Editor<Buff> {
         };
         Ok(())
     }
+    /// Checks if the history pointer can move further in the current mode.
+    ///
+    /// This function determines whether there are more historical entries
+    /// available in the direction the pointer is moving, based on the current mode.
+    fn can_move_history_pointer(&self) -> bool {
+        let history_len = match &self.mode {
+            Modal::Command => self.command_history.len(),
+            Modal::Find(FindMode::Forwards) => self.forwards_history.len(),
+            Modal::Find(FindMode::Backwards) => self.backwards_history.len(),
+            otherwise => {
+                notif_bar!(format!("Invalid mode `{otherwise}` asking for history pointer specs"););
+                return false 
+            }
+        };
+        // There is no -1 from history_len because history is looked up by n - 1 of the pointer
+        // To accomodate having an empty string always be the 0th element
+        history_len >= self.history_pointer as usize
+    }
     fn run_command(&mut self) -> Result<bool> {
         self.draw_rows()?;
         draw_bar(&INFO_BAR, |term_width, _| {
@@ -271,11 +299,11 @@ impl<Buff: TextBuffer> Editor<Buff> {
                 KeyCode::Enter => return Ok(true),
                 KeyCode::Char(c) => self.push(c),
                 KeyCode::Up => {
-                    if self.history_pointer < 50 {
+                    self.history_pointer += 1;
+                    if self.can_move_history_pointer() {
                         match &self.mode {
                             Modal::Find(find_mode) => {
                                 let hist = self.get_from_search_history(self.history_pointer, *find_mode);
-                                self.history_pointer += 1;
                                 if let Some(h) = hist {
                                     if !h.is_empty() {
                                         self.buffer.replace_command_text(h)
@@ -285,23 +313,26 @@ impl<Buff: TextBuffer> Editor<Buff> {
                             Modal::Command => unimplemented!(),
                             otherwise => Err(Error::ProgrammingBug {descr: format!("A different mode than Find or Command set as editor modal while working in the command bar `{otherwise}`")})?
                         }
+                    } else {
+                        self.history_pointer = self.history_pointer.saturating_sub(1);
                     }
                 }
                 KeyCode::Down => {
-                    if self.history_pointer != 0 {
+                    if self.history_pointer > 0 {
+                        self.history_pointer -= 1;
                         match &self.mode {
                             Modal::Find(find_mode) => {
-                                    self.history_pointer -= 1;
-                                    let hist = self.get_from_search_history(self.history_pointer, *find_mode);
-                                    if let Some(h) = hist {
-                                        self.buffer.replace_command_text(h)
-                                    }
+                                let hist = self.get_from_search_history(self.history_pointer, *find_mode);
+                                if let Some(h) = hist {
+                                    self.buffer.replace_command_text(h)
                                 }
+                            }
                             Modal::Command => unimplemented!(),
                             otherwise => Err(Error::ProgrammingBug {descr: format!("A different mode than Find or Command set as editor modal while working in the command bar `{otherwise}`")})?
                         }
                     }
                 }
+
                 KeyCode::Backspace => self.delete(),
                 KeyCode::Left => self.cursor.bump_left(),
                 KeyCode::Right => self.cursor.bump_right(),
