@@ -18,9 +18,79 @@ use crossterm::{
 use std::collections::VecDeque;
 // use crate::modal::Modal;
 use std::io::stdout;
+use std::ops::{Add, AddAssign, Sub, SubAssign};
 use std::process::exit;
 
 const MAX_HISTORY: usize = 50;
+const WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS: usize = 4;
+
+#[derive(Clone, Copy)]
+pub struct ViewWindow {
+    pub from: LineCol,
+    pub to: LineCol,
+}
+
+impl Default for ViewWindow {
+    fn default() -> Self {
+        let (_, term_height) = terminal::size().expect("Couldn't read information about terminal size");
+        let normal_window_height = term_height as usize - 1 - (NOTIFICATION_BAR_Y_LOCATION as usize).max(INFO_BAR_Y_LOCATION as usize);
+        Self {
+            from: Default::default(),
+            to: LineCol { line: normal_window_height, col: 0 }
+
+        }
+    }
+}
+
+impl Add<isize> for ViewWindow {
+    type Output = Self;
+
+    fn add(self, rhs: isize) -> Self::Output {
+        ViewWindow {
+            from: LineCol {
+                line: self.from.line + rhs as usize,
+                col: 0
+            },
+            to: LineCol {
+                line: self.to.line + rhs as usize,
+                col: 0
+            },
+        }
+    }
+}
+
+impl Sub<isize> for ViewWindow {
+    type Output = Self;
+
+    /// Moves the window down by one line
+    fn sub(self, rhs: isize) -> Self::Output {
+        ViewWindow {
+            from: LineCol {
+                line: self.from.line.saturating_sub(rhs as usize),
+                col: 0
+            },
+            to: LineCol {
+                line: self.to.line - rhs as usize,
+                col: 0
+            },
+        }
+    }
+}
+
+impl AddAssign<isize> for ViewWindow {
+    fn add_assign(&mut self, rhs: isize) {
+        self.from.line = self.from.line.saturating_sub(rhs as usize);
+        self.to.line = self.to.line.saturating_sub(rhs as usize);
+    }
+}
+
+impl SubAssign<isize> for ViewWindow {
+    fn sub_assign(&mut self, rhs: isize) {
+        self.from.line = self.from.line.saturating_add(rhs as usize);
+        self.to.line = self.to.line.saturating_add(rhs as usize);
+    }
+}
+
 
 /// The main editor is used as the main API for all commands
 pub struct Editor<Buff: TextBuffer> {
@@ -34,6 +104,7 @@ pub struct Editor<Buff: TextBuffer> {
     pub(crate) forwards_history: VecDeque<String>,
     pub(crate) backwards_history: VecDeque<String>,
     pub(crate) history_pointer: u8,
+    pub(crate) view_window: ViewWindow,
 }
 
 impl<Buff: TextBuffer> Drop for Editor<Buff> {
@@ -56,12 +127,13 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Self {
             buffer,
             prev_pos: LineCol { line: 0, col: 0 },
-            cursor: Cursor::default(),
-            mode: Modal::default(),
+            cursor: Default::default(),
+            mode: Default::default(),
             command_history: VecDeque::new(),
             forwards_history: VecDeque::new(),
             backwards_history: VecDeque::new(),
             history_pointer: 0,
+            view_window: Default::default()
         }
     }
 
@@ -175,6 +247,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
 
         loop {
             self.force_within_bounds();
+            self.control_view_window();
             match self.mode {
                 Modal::Command | Modal::Find(_) => {}
                 _ => self.buffer.clear_command(),
@@ -365,22 +438,59 @@ impl<Buff: TextBuffer> Editor<Buff> {
     /// This function can return an error if terminal operations (e.g., clearing, moving cursor, writing) fail.
     pub(crate) fn draw_rows(&self) -> Result<()> {
         let mut stdout = stdout();
-        let (_, term_height) = terminal::size()?;
+        // let (_, term_height) = terminal::size()?;
         execute!(
             stdout,
             terminal::Clear(ClearType::All),
             crossterm::cursor::MoveTo(0, 0)
         )?;
 
-        let split_line_n = term_height as usize
-            - 1
-            - (NOTIFICATION_BAR_Y_LOCATION as usize).max(INFO_BAR_Y_LOCATION as usize);
+        // let normal_text_height = term_height as usize
+        //     - 1
+        //     - (NOTIFICATION_BAR_Y_LOCATION as usize).max(INFO_BAR_Y_LOCATION as usize);
 
-        for line in self.buffer.get_normal_text().iter().take(split_line_n) {
+        for line in self.buffer.get_buffer_window(Some(self.view_window.from), Some(self.view_window.to))?.iter() {
             execute!(stdout, terminal::Clear(ClearType::CurrentLine))?;
             println!("{line}\r");
         }
         Ok(())
+    }
+
+    pub(crate) fn center_view_window(&mut self) {
+        let (_, term_height) = terminal::size().expect("Terminal detection is corrupted.");
+        let bottom_half = term_height / 2;
+        let top_half = if term_height % 2 != 0 {bottom_half + 1} else {bottom_half};
+        
+        let current_pos = self.pos();
+        let top_border = current_pos.line - top_half as usize;
+        let bottom_border = current_pos.line + bottom_half as usize;
+        self.view_window = {
+            ViewWindow {
+                from: LineCol {
+                    line: top_border,
+                    col: self.buffer.max_col(LineCol {line: top_border, col: 0})
+                },
+                to: LineCol {
+                    line: bottom_border,
+                    col: self.buffer.max_col(LineCol {line: bottom_border, col: 0})
+                }
+ 
+            }
+       }
+
+
+
+    }
+    /// Makes sure the cursor is in bounds of the view window, if it isnt' follow the cursor with
+    /// the bounds
+    pub(crate) fn control_view_window(&mut self) {
+        if self.pos().line < self.view_window.from.line || self.pos().line > self.view_window.to.line {
+            self.center_view_window();
+        } else if self.pos().line < self.view_window.from.line + WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS{
+            self.view_window += 1;
+        } else if self.pos().line > self.view_window.to.line - WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS {
+            self.view_window -= 1;
+        }
     }
 
     /// Moves the cursor graphics to its current position in the editor.
