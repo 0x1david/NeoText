@@ -74,7 +74,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     }
     fn get_from_search_history(&self, nth: u8, find_mode: FindMode) -> Option<String> {
         if nth == 0 {
-            return Some(String::new())
+            return Some(String::new());
         }
         match find_mode {
             FindMode::Forwards => self.forwards_history.get((nth - 1) as usize).cloned(),
@@ -161,7 +161,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     /// This function:
     /// 1. Enables raw mode for the terminal.
     /// 2. Continuously draws the editor content and handles user input.
-    /// 3. Exits when the user presses the Esc key (Returning Exit Error)
+    /// 3. Exits when the user presses the Esc key.
     ///
     /// # Returns
     /// `Ok(())` if the editor runs and exits successfully, or an error if any operation fails.
@@ -199,19 +199,23 @@ impl<Buff: TextBuffer> Editor<Buff> {
         if self.run_command()? {
             let pat = &self.buffer.get_command_text()[0][1..];
             let (history_pat, result) = match find_mode {
-                FindMode::Forwards => {
-                    (format!("/{pat}"), self.buffer.find(pat, self.last_normal_pos()))
-                }
-                FindMode::Backwards => {
-                    (format!("?{pat}"), self.buffer.rfind(pat, self.last_normal_pos()))
-                }
+                FindMode::Forwards => (
+                    format!("/{pat}"),
+                    self.buffer.find(pat, self.last_normal_pos()),
+                ),
+                FindMode::Backwards => (
+                    format!("?{pat}"),
+                    self.buffer.rfind(pat, self.last_normal_pos()),
+                ),
             };
             self.add_to_search_history(history_pat);
             match result {
                 Err(Error::InvalidInput) => notif_bar!("Empty find query.";),
                 Err(Error::PatternNotFound) => notif_bar!("No matches found for your pattern";),
-                Err(_) => panic!("Unexpected error returned from find. Please contact the developers."),
-                Ok(linecol) => self.cursor.last_text_mode_pos = linecol
+                Err(_) => {
+                    panic!("Unexpected error returned from find. Please contact the developers.")
+                }
+                Ok(linecol) => self.cursor.last_text_mode_pos = linecol,
             }
             self.set_mode(Modal::Normal);
         }
@@ -219,19 +223,19 @@ impl<Buff: TextBuffer> Editor<Buff> {
     }
 
     fn run_command_mode(&mut self) -> Result<()> {
-            if self.buffer.is_command_empty() {
-                self.push(':');
-            }
-            if self.run_command()? {
-                match self.buffer.get_command_text()[0].as_str() {
-                    ":q" => return Err(Error::ExitCall),
-                    "/EXIT NOW" => exit(0),
-                    _ => {}
-                };
-                self.set_mode(Modal::Normal);
-            }
-            Ok(())
+        if self.buffer.is_command_empty() {
+            self.push(':');
         }
+        if self.run_command()? {
+            match self.buffer.get_command_text()[0].as_str() {
+                ":q" => return Err(Error::ExitCall),
+                "/EXIT NOW" => exit(0),
+                _ => {}
+            };
+            self.set_mode(Modal::Normal);
+        }
+        Ok(())
+    }
 
     #[allow(clippy::unused_self, clippy::needless_pass_by_ref_mut)]
     fn run_visual(&mut self) -> Result<()> {
@@ -273,7 +277,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             Modal::Find(FindMode::Backwards) => self.backwards_history.len(),
             otherwise => {
                 notif_bar!(format!("Invalid mode `{otherwise}` asking for history pointer specs"););
-                return false 
+                return false;
             }
         };
         // There is no -1 from history_len because history is looked up by n - 1 of the pointer

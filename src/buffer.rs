@@ -55,6 +55,10 @@ pub trait TextBuffer {
     fn get_entire_text(&self) -> &[String];
     /// Get the entire text for the normal buffer
     fn get_normal_text(&self) -> &[String];
+
+    /// Get partial window to the normal buffer, ranging from -> to
+    fn get_buffer_window(&self, from: Option<LineCol>, to: Option<LineCol>) -> Result<Vec<String>>;
+
     /// Get the entire text for the terminal buffer
     fn get_terminal_text(&self) -> &str;
     /// Get the entire text for the command buffer
@@ -144,9 +148,9 @@ enum BufferPlane {
 impl Default for VecBuffer {
     fn default() -> Self {
         Self {
-            text: vec![String::default()],
-            terminal: vec![String::default()],
-            command: vec![String::default()],
+            text: vec![String::new()],
+            terminal: vec![String::new()],
+            command: vec![String::new()],
             past: Stack::default(),
             future: Stack::default(),
             plane: BufferPlane::Normal,
@@ -158,8 +162,8 @@ impl VecBuffer {
     pub fn new(text: Vec<String>) -> Self {
         Self {
             text,
-            terminal: vec![String::default()],
-            command: vec![String::default()],
+            terminal: vec![String::new()],
+            command: vec![String::new()],
             past: Stack::default(),
             future: Stack::default(),
             plane: BufferPlane::Normal,
@@ -179,12 +183,11 @@ impl VecBuffer {
             BufferPlane::Command => &self.command,
         }
     }
+}
 
-    fn get_partial_buffer(
-        &self,
-        from: Option<LineCol>,
-        to: Option<LineCol>,
-    ) -> Result<Vec<String>> {
+impl TextBuffer for VecBuffer {
+    // Gets only partial buffer from a position to a position
+    fn get_buffer_window(&self, from: Option<LineCol>, to: Option<LineCol>) -> Result<Vec<String>> {
         if from.is_none() && to.is_none() {
             return Ok(self.get_normal_text().to_owned());
         }
@@ -193,6 +196,7 @@ impl VecBuffer {
         if from.line > to.line || (from.line == to.line && from.col > to.col) {
             return Err(Error::InvalidInput);
         }
+
         let mut vec = self.get_normal_text()[from.line..=to.line].to_owned();
         vec[0] = vec[0][from.col..].to_string();
         let last = vec.len() - 1;
@@ -201,12 +205,12 @@ impl VecBuffer {
         } else {
             vec[last].truncate(to.col);
         }
+        if to.col == 0 {
+            let _ = vec.pop();
+        }
 
         Ok(vec)
     }
-}
-
-impl TextBuffer for VecBuffer {
     fn replace_command_text(&mut self, new: String) {
         self.command = vec![new]
     }
@@ -215,7 +219,7 @@ impl TextBuffer for VecBuffer {
     }
     fn clear_command(&mut self) {
         self.command.clear();
-        self.command.push(String::default());
+        self.command.push(String::new());
     }
     fn is_command_empty(&self) -> bool {
         self.command[0].is_empty()
@@ -239,7 +243,7 @@ impl TextBuffer for VecBuffer {
         LineCol { line, col }
     }
     fn insert_newline(&mut self, mut at: LineCol) -> LineCol {
-        self.get_mut_buffer().insert(at.line + 1, String::default());
+        self.get_mut_buffer().insert(at.line + 1, String::new());
         at.line += 1;
         at.col = 0;
         at
@@ -311,7 +315,7 @@ impl TextBuffer for VecBuffer {
     /// ```
     fn find(&self, query: impl Pattern, at: LineCol) -> Result<LineCol> {
         query
-            .find_pattern(&self.get_partial_buffer(Some(at), None)?)
+            .find_pattern(&self.get_buffer_window(Some(at), None)?)
             .ok_or(Error::PatternNotFound)
             .map(|v| LineCol {
                 line: v.line + at.line,
@@ -319,7 +323,7 @@ impl TextBuffer for VecBuffer {
             })
     }
 
-    /// Searches backwards for a query string in the buffer, starting from a given position.
+    /// Searches backwards for a query string in the buffer, ending at a given position.
     ///
     /// # Arguments
     ///
@@ -348,7 +352,7 @@ impl TextBuffer for VecBuffer {
     /// ```
     fn rfind(&self, query: impl Pattern, at: LineCol) -> Result<LineCol> {
         query
-            .find_pattern(&self.get_partial_buffer(None, Some(at))?)
+            .rfind_pattern(&self.get_buffer_window(None, Some(at))?)
             .ok_or(Error::PatternNotFound)
             .map(|v| LineCol {
                 line: v.line,
@@ -1296,7 +1300,7 @@ mod tests {
     #[test]
     fn test_get_partial_buffer_full_range() {
         let buf = new_test_buffer_find();
-        let result = buf.get_partial_buffer(None, None).unwrap();
+        let result = buf.get_buffer_window(None, None).unwrap();
         assert_eq!(result, buf.text);
     }
 
@@ -1304,7 +1308,7 @@ mod tests {
     fn test_get_partial_buffer_single_line() {
         let buf = new_test_buffer_find();
         let result = buf
-            .get_partial_buffer(
+            .get_buffer_window(
                 Some(LineCol { line: 0, col: 6 }),
                 Some(LineCol { line: 0, col: 10 }),
             )
@@ -1316,7 +1320,7 @@ mod tests {
     fn test_get_partial_buffer_multiple_lines() {
         let buf = new_test_buffer_find();
         let result = buf
-            .get_partial_buffer(
+            .get_buffer_window(
                 Some(LineCol { line: 0, col: 6 }),
                 Some(LineCol { line: 2, col: 5 }),
             )
@@ -1331,7 +1335,7 @@ mod tests {
     fn test_get_partial_buffer_from_middle_to_end() {
         let buf = new_test_buffer_find();
         let result = buf
-            .get_partial_buffer(Some(LineCol { line: 1, col: 7 }), None)
+            .get_buffer_window(Some(LineCol { line: 1, col: 7 }), None)
             .unwrap();
         assert_eq!(result, vec!["line also has text", "Third line is here too"]);
     }
@@ -1340,7 +1344,7 @@ mod tests {
     fn test_get_partial_buffer_from_start_to_middle() {
         let buf = new_test_buffer_find();
         let result = buf
-            .get_partial_buffer(None, Some(LineCol { line: 1, col: 7 }))
+            .get_buffer_window(None, Some(LineCol { line: 1, col: 7 }))
             .unwrap();
         assert_eq!(result, vec!["First line with some text", "Second "]);
     }
@@ -1348,7 +1352,7 @@ mod tests {
     #[test]
     fn test_get_partial_buffer_invalid_range() {
         let buf = new_test_buffer_find();
-        let result = buf.get_partial_buffer(
+        let result = buf.get_buffer_window(
             Some(LineCol { line: 2, col: 0 }),
             Some(LineCol { line: 1, col: 0 }),
         );
@@ -1359,7 +1363,7 @@ mod tests {
     fn test_get_partial_buffer_empty_range() {
         let buf = new_test_buffer_find();
         let result = buf
-            .get_partial_buffer(
+            .get_buffer_window(
                 Some(LineCol { line: 1, col: 5 }),
                 Some(LineCol { line: 1, col: 5 }),
             )
@@ -1371,7 +1375,7 @@ mod tests {
     fn test_get_partial_buffer_last_line() {
         let buf = new_test_buffer_find();
         let result = buf
-            .get_partial_buffer(Some(LineCol { line: 2, col: 6 }), None)
+            .get_buffer_window(Some(LineCol { line: 2, col: 6 }), None)
             .unwrap();
         assert_eq!(result, vec!["line is here too"]);
     }

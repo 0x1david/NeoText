@@ -3,7 +3,6 @@
 //      create a better DS for buffer
 //      Marks
 //      Undo and Redo
-//      Command History
 //      Configuration parsing and configurable controller
 //      Visual Mode
 //      Macros
@@ -13,16 +12,13 @@
 //      Copy && Paste
 //      Programmable Extensions
 //      Screen Splits
-//      Commands
+//      File Commands (After pressing :)
 #![allow(dead_code)]
 use std::{io::stdout, path::PathBuf};
 
 mod error;
 use buffer::VecBuffer;
-use crossterm::{
-    execute,
-    terminal::EnterAlternateScreen,
-};
+use crossterm::{execute, terminal::EnterAlternateScreen};
 use editor::Editor;
 use error::{Error, Result};
 
@@ -43,7 +39,10 @@ fn main() {
     match editor.run() {
         Err(Error::ExitCall) => (),
         Ok(_) => panic!("Editor should never return without an error"),
-        otherwise => panic!("Err of type {:?} should be handled before reaching the main function.", otherwise),
+        otherwise => panic!(
+            "Err of type {:?} should be handled before reaching the main function.",
+            otherwise
+        ),
     }
 }
 
