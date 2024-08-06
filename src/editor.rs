@@ -24,20 +24,33 @@ use std::process::exit;
 const MAX_HISTORY: usize = 50;
 const WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS: usize = 4;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct ViewWindow {
-    pub from: LineCol,
-    pub to: LineCol,
+    pub top: LineCol,
+    pub bot: LineCol,
 }
 
 impl Default for ViewWindow {
     fn default() -> Self {
-        let (_, term_height) = terminal::size().expect("Couldn't read information about terminal size");
-        let normal_window_height = term_height as usize - 1 - (NOTIFICATION_BAR_Y_LOCATION as usize).max(INFO_BAR_Y_LOCATION as usize);
-        Self {
-            from: Default::default(),
-            to: LineCol { line: normal_window_height, col: 0 }
+        let (_, term_height) =
+            terminal::size().expect("Couldn't read information about terminal size");
+        let normal_window_height = usize::from(term_height).saturating_sub(1).saturating_sub((NOTIFICATION_BAR_Y_LOCATION as usize).max(INFO_BAR_Y_LOCATION as usize));
 
+        Self {
+            top: Default::default(),
+            bot: LineCol {
+                line: normal_window_height,
+                col: 0,
+            },
+        }
+    }
+}
+
+impl ViewWindow {
+    pub fn calculate_view_cursor(&self, main_cursor_pos: LineCol) -> LineCol {
+        LineCol {
+            line: main_cursor_pos.line - self.top.line,
+            col: main_cursor_pos.col,
         }
     }
 }
@@ -47,13 +60,13 @@ impl Add<isize> for ViewWindow {
 
     fn add(self, rhs: isize) -> Self::Output {
         ViewWindow {
-            from: LineCol {
-                line: self.from.line + rhs as usize,
-                col: 0
+            top: LineCol {
+                line: self.top.line + rhs as usize,
+                col: 0,
             },
-            to: LineCol {
-                line: self.to.line + rhs as usize,
-                col: 0
+            bot: LineCol {
+                line: self.bot.line + rhs as usize,
+                col: 0,
             },
         }
     }
@@ -65,13 +78,13 @@ impl Sub<isize> for ViewWindow {
     /// Moves the window down by one line
     fn sub(self, rhs: isize) -> Self::Output {
         ViewWindow {
-            from: LineCol {
-                line: self.from.line.saturating_sub(rhs as usize),
-                col: 0
+            top: LineCol {
+                line: self.top.line.saturating_sub(rhs as usize),
+                col: 0,
             },
-            to: LineCol {
-                line: self.to.line - rhs as usize,
-                col: 0
+            bot: LineCol {
+                line: self.bot.line - rhs as usize,
+                col: 0,
             },
         }
     }
@@ -79,18 +92,17 @@ impl Sub<isize> for ViewWindow {
 
 impl AddAssign<isize> for ViewWindow {
     fn add_assign(&mut self, rhs: isize) {
-        self.from.line = self.from.line.saturating_sub(rhs as usize);
-        self.to.line = self.to.line.saturating_sub(rhs as usize);
+        self.top.line = self.top.line.saturating_sub(rhs as usize);
+        self.bot.line = self.bot.line.saturating_sub(rhs as usize);
     }
 }
 
 impl SubAssign<isize> for ViewWindow {
     fn sub_assign(&mut self, rhs: isize) {
-        self.from.line = self.from.line.saturating_add(rhs as usize);
-        self.to.line = self.to.line.saturating_add(rhs as usize);
+        self.top.line = self.top.line.saturating_add(rhs as usize);
+        self.bot.line = self.bot.line.saturating_add(rhs as usize);
     }
 }
-
 
 /// The main editor is used as the main API for all commands
 pub struct Editor<Buff: TextBuffer> {
@@ -127,13 +139,13 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Self {
             buffer,
             prev_pos: LineCol { line: 0, col: 0 },
-            cursor: Default::default(),
-            mode: Default::default(),
+            cursor: Cursor::default(),
+            mode: Modal::default(),
             command_history: VecDeque::new(),
             forwards_history: VecDeque::new(),
             backwards_history: VecDeque::new(),
             history_pointer: 0,
-            view_window: Default::default()
+            view_window: ViewWindow::default(),
         }
     }
 
@@ -320,7 +332,6 @@ impl<Buff: TextBuffer> Editor<Buff> {
             get_info_bar_content(term_width, &self.mode, &self.pos())
         })?;
         draw_bar(&NOTIFICATION_BAR, |_, _| get_notif_bar_content())?;
-        self.move_cursor();
 
         if let Event::Key(key_event) = event::read()? {
             match key_event.code {
@@ -357,6 +368,43 @@ impl<Buff: TextBuffer> Editor<Buff> {
         // To accomodate having an empty string always be the 0th element
         history_len >= self.history_pointer as usize
     }
+    fn navigate_history_backwards(&mut self) -> Result<()> {
+        self.history_pointer += 1;
+        if self.can_move_history_pointer() {
+            match &self.mode {
+                            Modal::Find(find_mode) => {
+                                let hist = self.get_from_search_history(self.history_pointer, *find_mode);
+                                if let Some(h) = hist {
+                                    if !h.is_empty() {
+                                        self.buffer.replace_command_text(h)
+                                    }
+                                }
+                            }
+                            Modal::Command => unimplemented!(),
+                            otherwise => Err(Error::ProgrammingBug {descr: format!("A different mode than Find or Command set as editor modal while working in the command bar `{otherwise}`")})?
+                        }
+        } else {
+            self.history_pointer = self.history_pointer.saturating_sub(1);
+        }
+        Ok(())
+    }
+
+    fn navigate_history_forwards(&mut self) -> Result<()> {
+        if self.history_pointer > 0 {
+            self.history_pointer -= 1;
+            match &self.mode {
+                            Modal::Find(find_mode) => {
+                                let hist = self.get_from_search_history(self.history_pointer, *find_mode);
+                                if let Some(h) = hist {
+                                    self.buffer.replace_command_text(h);
+                                }
+                         }
+                            Modal::Command => unimplemented!(),
+                            otherwise => Err(Error::ProgrammingBug {descr: format!("A different mode than Find or Command set as editor modal while working in the command bar `{otherwise}`")})?
+                        }
+        }
+        Ok(())
+    }
     fn run_command(&mut self) -> Result<bool> {
         self.draw_rows()?;
         draw_bar(&INFO_BAR, |term_width, _| {
@@ -375,41 +423,8 @@ impl<Buff: TextBuffer> Editor<Buff> {
             match key_event.code {
                 KeyCode::Enter => return Ok(true),
                 KeyCode::Char(c) => self.push(c),
-                KeyCode::Up => {
-                    self.history_pointer += 1;
-                    if self.can_move_history_pointer() {
-                        match &self.mode {
-                            Modal::Find(find_mode) => {
-                                let hist = self.get_from_search_history(self.history_pointer, *find_mode);
-                                if let Some(h) = hist {
-                                    if !h.is_empty() {
-                                        self.buffer.replace_command_text(h)
-                                    }
-                                }
-                            }
-                            Modal::Command => unimplemented!(),
-                            otherwise => Err(Error::ProgrammingBug {descr: format!("A different mode than Find or Command set as editor modal while working in the command bar `{otherwise}`")})?
-                        }
-                    } else {
-                        self.history_pointer = self.history_pointer.saturating_sub(1);
-                    }
-                }
-                KeyCode::Down => {
-                    if self.history_pointer > 0 {
-                        self.history_pointer -= 1;
-                        match &self.mode {
-                            Modal::Find(find_mode) => {
-                                let hist = self.get_from_search_history(self.history_pointer, *find_mode);
-                                if let Some(h) = hist {
-                                    self.buffer.replace_command_text(h)
-                                }
-                            }
-                            Modal::Command => unimplemented!(),
-                            otherwise => Err(Error::ProgrammingBug {descr: format!("A different mode than Find or Command set as editor modal while working in the command bar `{otherwise}`")})?
-                        }
-                    }
-                }
-
+                KeyCode::Up => self.navigate_history_backwards()?,
+                KeyCode::Down => self.navigate_history_forwards()?,
                 KeyCode::Backspace => self.delete(),
                 KeyCode::Left => self.cursor.bump_left(),
                 KeyCode::Right => self.cursor.bump_right(),
@@ -445,50 +460,66 @@ impl<Buff: TextBuffer> Editor<Buff> {
             crossterm::cursor::MoveTo(0, 0)
         )?;
 
-        // let normal_text_height = term_height as usize
-        //     - 1
-        //     - (NOTIFICATION_BAR_Y_LOCATION as usize).max(INFO_BAR_Y_LOCATION as usize);
-
-        for line in self.buffer.get_buffer_window(Some(self.view_window.from), Some(self.view_window.to))?.iter() {
+        for line in self
+            .buffer
+            .get_buffer_window(Some(self.view_window.top), Some(self.view_window.bot))?
+            .iter()
+        {
             execute!(stdout, terminal::Clear(ClearType::CurrentLine))?;
             println!("{line}\r");
         }
+
         Ok(())
     }
 
     pub(crate) fn center_view_window(&mut self) {
         let (_, term_height) = terminal::size().expect("Terminal detection is corrupted.");
         let bottom_half = term_height / 2;
-        let top_half = if term_height % 2 != 0 {bottom_half + 1} else {bottom_half};
-        
+        let top_half = if term_height % 2 != 0 {
+            bottom_half + 1
+        } else {
+            bottom_half
+        };
+
         let current_pos = self.pos();
         let top_border = current_pos.line - top_half as usize;
         let bottom_border = current_pos.line + bottom_half as usize;
         self.view_window = {
             ViewWindow {
-                from: LineCol {
+                top: LineCol {
                     line: top_border,
-                    col: self.buffer.max_col(LineCol {line: top_border, col: 0})
+                    col: self.buffer.max_col(LineCol {
+                        line: top_border,
+                        col: 0,
+                    }),
                 },
-                to: LineCol {
+                bot: LineCol {
                     line: bottom_border,
-                    col: self.buffer.max_col(LineCol {line: bottom_border, col: 0})
-                }
- 
+                    col: self.buffer.max_col(LineCol {
+                        line: bottom_border,
+                        col: 0,
+                    }),
+                },
             }
-       }
-
-
-
+        }
     }
     /// Makes sure the cursor is in bounds of the view window, if it isnt' follow the cursor with
     /// the bounds
     pub(crate) fn control_view_window(&mut self) {
-        if self.pos().line < self.view_window.from.line || self.pos().line > self.view_window.to.line {
+        let cursor_out_of_bounds = self.pos().line < self.view_window.top.line
+            || self.pos().line > self.view_window.bot.line;
+        let cursor_less_than_proximity_from_top = self.pos().line
+            < self.view_window.top.line + WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS;
+        let main_cursor_more_than_4 =
+            self.pos().line > WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS;
+        let cursor_less_than_proximity_from_bot = self.pos().line
+            > self.view_window.bot.line - WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS;
+
+        if cursor_out_of_bounds {
             self.center_view_window();
-        } else if self.pos().line < self.view_window.from.line + WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS{
+        } else if cursor_less_than_proximity_from_top && main_cursor_more_than_4 {
             self.view_window += 1;
-        } else if self.pos().line > self.view_window.to.line - WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS {
+        } else if cursor_less_than_proximity_from_bot {
             self.view_window -= 1;
         }
     }
@@ -503,15 +534,11 @@ impl<Buff: TextBuffer> Editor<Buff> {
     /// # Errors
     /// This function can return an error if the terminal cursor movement operation fails.
     pub fn move_cursor(&self) {
-        let col =
-            u16::try_from(self.cursor.col()).expect("Column location higher than 65356 is invalid");
+        let cursor = self.view_window.calculate_view_cursor(self.pos());
+        notif_bar!(cursor);
         let _ = execute!(
             stdout(),
-            crossterm::cursor::MoveTo(
-                col,
-                u16::try_from(self.cursor.line())
-                    .expect("More than 65356 lines in a single file are currently unsupported.")
-            )
+            crossterm::cursor::MoveTo(cursor.col as u16, cursor.line as u16,)
         );
     }
 

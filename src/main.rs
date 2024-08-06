@@ -33,9 +33,11 @@ mod utils;
 
 fn main() {
     let _ = execute!(stdout(), EnterAlternateScreen);
-    // let mut editor = MainEditor::new(VecBuffer::default());
-    let p = "/home/flxvs/repositories/rust/text-editor/src/buffer.rs".into();
-    let mut editor = new_from_file(p);
+    let buf = VecBuffer::default();
+
+    let mut editor = Editor::new(buf);
+    // let p = "/home/flxvs/repositories/rust/text-editor/src/buffer.rs".into();
+    // let mut editor = new_from_file(p);
     match editor.run() {
         Err(Error::ExitCall) => (),
         Ok(_) => panic!("Editor should never return without an error"),

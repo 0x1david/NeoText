@@ -74,7 +74,11 @@ pub trait TextBuffer {
     fn clear_command(&mut self);
     fn max_linecol(&self) -> LineCol;
     fn delete_line(&mut self, at: usize);
-    fn get_full_lines_buffer_window(&self, from: Option<LineCol>, to: Option<LineCol>) -> Result<Vec<String>>;
+    fn get_full_lines_buffer_window(
+        &self,
+        from: Option<LineCol>,
+        to: Option<LineCol>,
+    ) -> Result<Vec<String>>;
 }
 
 /// A stack implementation using a `VecDeque` as the underlying storage.
@@ -149,9 +153,9 @@ enum BufferPlane {
 impl Default for VecBuffer {
     fn default() -> Self {
         Self {
-            text: vec![String::new()],
-            terminal: vec![String::new()],
-            command: vec![String::new()],
+            text: vec![" ".to_string()],
+            terminal: vec![" ".to_string()],
+            command: vec![" ".to_string()],
             past: Stack::default(),
             future: Stack::default(),
             plane: BufferPlane::Normal,
@@ -193,7 +197,8 @@ impl TextBuffer for VecBuffer {
             return Ok(self.get_normal_text().to_owned());
         }
         let from = from.unwrap_or(LineCol { line: 0, col: 0 });
-        let to = to.unwrap_or_else(|| self.max_linecol());
+        let mut to = to.unwrap_or_else(|| self.max_linecol());
+        to.line = self.max_line().min(to.line);
         if from.line > to.line || (from.line == to.line && from.col > to.col) {
             return Err(Error::InvalidInput);
         }
@@ -212,16 +217,22 @@ impl TextBuffer for VecBuffer {
 
         Ok(vec)
     }
-    fn get_full_lines_buffer_window(&self, from: Option<LineCol>, to: Option<LineCol>) -> Result<Vec<String>> {
+    fn get_full_lines_buffer_window(
+        &self,
+        from: Option<LineCol>,
+        to: Option<LineCol>,
+    ) -> Result<Vec<String>> {
         let full_text = self.get_normal_text();
-        
+
         let start_line = from.map(|lc| lc.line).unwrap_or(0);
-        let end_line = to.map(|lc| lc.line).unwrap_or_else(|| full_text.len().saturating_sub(1));
-        
+        let end_line = to
+            .map(|lc| lc.line)
+            .unwrap_or_else(|| full_text.len().saturating_sub(1));
+
         if start_line > end_line || start_line >= full_text.len() {
             return Err(Error::InvalidInput);
         }
-        
+
         let end_line = end_line.min(full_text.len().saturating_sub(1));
         let result = full_text[start_line..=end_line].to_vec();
         Ok(result)
