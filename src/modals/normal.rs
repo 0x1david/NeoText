@@ -18,7 +18,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         carry_over: Option<i32>,
         prev_char: Option<char>,
     ) -> Result<()> {
-        self.draw_rows()?;
+        self.draw_lines()?;
         draw_bar(&INFO_BAR, |term_width, _| {
             get_info_bar_content(term_width, &self.mode, &self.pos())
         })?;
