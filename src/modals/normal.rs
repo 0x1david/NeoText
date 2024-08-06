@@ -24,6 +24,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         })?;
         draw_bar(&NOTIFICATION_BAR, |_, _| get_notif_bar_content())?;
         self.move_cursor();
+        self.force_within_bounds();
 
         if let Event::Key(key_event) = event::read()? {
             match (key_event.code, key_event.modifiers) {

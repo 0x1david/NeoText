@@ -26,6 +26,7 @@ impl PartialOrd for LineCol {
 /// The overarching cursor struct
 pub struct Cursor {
     pub pos: LineCol,
+    pub previous_pos: LineCol,
     pos_initial: LineCol,
     col_max: usize,
     line_max: usize,
@@ -36,12 +37,13 @@ pub struct Cursor {
 impl Default for Cursor {
     fn default() -> Self {
         Self {
-            pos: LineCol { line: 0, col: 0 },
-            pos_initial: LineCol { line: 0, col: 0 },
+            pos: LineCol::default(),
+            previous_pos: LineCol::default(),
+            pos_initial: LineCol::default(),
             col_max: 0,
             line_max: 0,
             plane: CursorPlane::Text,
-            last_text_mode_pos: LineCol { line: 0, col: 0 },
+            last_text_mode_pos: LineCol::default(),
         }
     }
 }
@@ -49,9 +51,9 @@ impl Default for Cursor {
 impl Cursor {
     #[inline]
     pub fn go(&mut self, to: LineCol) {
-        self.pos = notif_bar!(to);
+        self.previous_pos = self.pos;
+        self.pos = to;
     }
-
     #[inline]
     pub const fn line(&self) -> usize {
         self.pos.line
@@ -59,6 +61,7 @@ impl Cursor {
 
     #[inline]
     pub fn set_line(&mut self, new: usize) {
+        self.previous_pos = self.pos;
         self.pos.line = new;
     }
 
@@ -69,69 +72,79 @@ impl Cursor {
 
     #[inline]
     pub fn set_col(&mut self, new: usize) {
+        self.previous_pos = self.pos;
         self.pos.col = new;
     }
+
     /// Moves the cursor one position to the left, if there's left to go to, otherwise remains in
     /// place.
     #[inline]
     pub fn bump_left(&mut self) {
+        self.previous_pos = self.pos;
         if self.col() != 0 {
-            self.set_col(self.col() - 1);
+            self.pos.col -= 1;
         }
     }
+
     /// Moves the cursor one position to the right, if there's right to go to, otherwise remains in
     /// place.
     #[inline]
     pub fn bump_right(&mut self) {
-        self.set_col(self.col() + 1);
+        self.previous_pos = self.pos;
+        self.pos.col += 1;
     }
+
     /// Moves the cursor one position up, if there's upper line to go to, otherwise remains in
     /// place.
     #[inline]
     pub fn bump_up(&mut self) {
+        self.previous_pos = self.pos;
         if self.line() != 0 {
-            self.set_line(self.line() - 1);
+            self.pos.line -= 1;
         }
     }
+
     /// Moves the cursor one position down, if there's lower line to go to, otherwise remains in
     /// place.
     #[inline]
     pub fn bump_down(&mut self) {
-        self.set_line(self.line() + 1);
+        self.previous_pos = self.pos;
+        self.pos.line += 1;
     }
+
     /// Moves the cursor left by the specified distance, clamping at zero.
-    /// TODO: Check whether Y is in the allowed boundaries for the new row, if it isnt, update the
-    /// value
     #[inline]
     pub fn jump_left(&mut self, dist: usize) {
-        self.set_col(self.col().saturating_sub(dist));
+        self.previous_pos = self.pos;
+        self.pos.col = self.col().saturating_sub(dist);
     }
+
     /// Moves the cursor right by the specified distance, clamping at the end of a row.
-    /// TODO: Check whether Y is in the allowed boundaries for the new row, if it isnt, update the
-    /// value
     #[inline]
     pub fn jump_right(&mut self, dist: usize) {
-        self.set_col(self.col_max.min(self.col() + dist));
+        self.previous_pos = self.pos;
+        self.pos.col = self.col_max.min(self.col() + dist);
     }
+
     /// Moves the cursor up by the specified distance, clamping at the top.
-    /// TODO: Check whether X is in the allowed boundaries for the new row, if it isnt, update the
-    /// value
     #[inline]
     pub fn jump_up(&mut self, dist: usize) {
-        self.set_line(self.line().saturating_sub(dist));
+        self.previous_pos = self.pos;
+        self.pos.line = self.line().saturating_sub(dist);
     }
-    /// Moves the cursor down by the specified distance, clamping at the bottom of the file.
-    /// TODO: Check whether X is in the allowed boundaries for the new row, if it isnt, update the
-    /// value
+
+    /// Moves the cursor down by the specified distance, clamping at the bottom.
     #[inline]
     pub fn jump_down(&mut self, dist: usize) {
-        self.set_line(self.line_max.min(self.line() + dist));
+        self.previous_pos = self.pos;
+        self.pos.line = self.line_max.min(self.line() + dist);
     }
 
     /// Updates the location the cursor points at depending on the current active modal state.
     pub fn mod_change(&mut self, modal: &Modal) {
         if self.plane.text() {
             self.last_text_mode_pos = self.pos;
+            self.previous_pos = self.pos;
         }
         match modal {
             Modal::Command | Modal::Find(_) => {

@@ -13,6 +13,7 @@
 //      Programmable Extensions
 //      Screen Splits
 //      File Commands (After pressing :)
+//      Different cursors
 #![allow(dead_code)]
 use std::{io::stdout, path::PathBuf};
 

@@ -153,9 +153,9 @@ enum BufferPlane {
 impl Default for VecBuffer {
     fn default() -> Self {
         Self {
-            text: vec![" ".to_string()],
-            terminal: vec![" ".to_string()],
-            command: vec![" ".to_string()],
+            text: vec![String::new()],
+            terminal: vec![String::new()],
+            command: vec![String::new()],
             past: Stack::default(),
             future: Stack::default(),
             plane: BufferPlane::Normal,

@@ -8,6 +8,7 @@ use crate::cursor::{Cursor, LineCol};
 use crate::modals::{FindMode, Modal};
 use crate::notif_bar;
 use crate::{Error, Result};
+use crossterm::cursor::SetCursorStyle;
 use crossterm::terminal::LeaveAlternateScreen;
 use crossterm::{
     event::{self, Event, KeyCode},
@@ -186,9 +187,10 @@ impl<Buff: TextBuffer> Editor<Buff> {
 
     /// If the cursor is in an invalid position, applies a cursor movement that results in a valid position within the buffer bounds.
     pub fn force_within_bounds(&mut self) {
-        let original_pos = self.pos();
+        let original_pos = self.cursor.previous_pos;
         if self.pos().line > self.buffer.max_line() {
             self.cursor.pos = original_pos;
+            notif_bar!(format!("Returning to {original_pos}"));
             return;
         }
         let new_pos = self.pos();
@@ -214,6 +216,12 @@ impl<Buff: TextBuffer> Editor<Buff> {
         self.cursor.mod_change(&modal);
         self.buffer.set_plane(&modal);
         self.mode = modal;
+
+        let cursor_style = match self.mode {
+            Modal::Insert | Modal::Command | Modal::Find(_) => SetCursorStyle::SteadyBar,
+            _ => SetCursorStyle::DefaultUserShape,
+        };
+        _ = execute!(stdout(), cursor_style);
     }
 
     #[inline]
@@ -332,6 +340,8 @@ impl<Buff: TextBuffer> Editor<Buff> {
             get_info_bar_content(term_width, &self.mode, &self.pos())
         })?;
         draw_bar(&NOTIFICATION_BAR, |_, _| get_notif_bar_content())?;
+        self.move_cursor();
+        self.force_within_bounds();
 
         if let Event::Key(key_event) = event::read()? {
             match key_event.code {
@@ -457,12 +467,12 @@ impl<Buff: TextBuffer> Editor<Buff> {
         execute!(
             stdout,
             terminal::Clear(ClearType::All),
-            crossterm::cursor::MoveTo(0, 0)
+            crossterm::cursor::MoveTo(0, 0),
         )?;
 
         for line in self
             .buffer
-            .get_buffer_window(Some(self.view_window.top), Some(self.view_window.bot))?
+            .get_full_lines_buffer_window(Some(self.view_window.top), Some(self.view_window.bot))?
             .iter()
         {
             execute!(stdout, terminal::Clear(ClearType::CurrentLine))?;
@@ -535,7 +545,6 @@ impl<Buff: TextBuffer> Editor<Buff> {
     /// This function can return an error if the terminal cursor movement operation fails.
     pub fn move_cursor(&self) {
         let cursor = self.view_window.calculate_view_cursor(self.pos());
-        notif_bar!(cursor);
         let _ = execute!(
             stdout(),
             crossterm::cursor::MoveTo(cursor.col as u16, cursor.line as u16,)
