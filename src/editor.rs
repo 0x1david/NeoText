@@ -7,6 +7,7 @@ use crate::buffer::TextBuffer;
 use crate::cursor::{Cursor, LineCol};
 use crate::modals::{FindMode, Modal};
 use crate::notif_bar;
+use crate::utils::draw_ascii_art;
 use crate::{Error, Result};
 use crossterm::style::{self, ResetColor};
 use crossterm::terminal::LeaveAlternateScreen;
@@ -120,6 +121,9 @@ pub struct Editor<Buff: TextBuffer> {
     pub(crate) backwards_history: VecDeque<String>,
     pub(crate) history_pointer: u8,
     pub(crate) view_window: ViewWindow,
+    // Specifies whether a drawing of lines has happened before and if the app was opened without a
+    // target file
+    pub(crate) is_initial_launch: bool,
 }
 
 impl<Buff: TextBuffer> Drop for Editor<Buff> {
@@ -137,7 +141,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     ///
     /// # Returns
     /// A new `MainEditor` instance initialized with the given buffer and default cursor position.
-    pub fn new(buffer: Buff) -> Self {
+    pub fn new(buffer: Buff, launch_without_target: bool) -> Self {
         Self {
             buffer,
             prev_pos: LineCol { line: 0, col: 0 },
@@ -148,6 +152,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             backwards_history: VecDeque::new(),
             history_pointer: 0,
             view_window: ViewWindow::default(),
+            is_initial_launch: launch_without_target
         }
     }
 
@@ -457,7 +462,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     ///
     /// # Errors
     /// This function can return an error if terminal operations (e.g., clearing, moving cursor, writing) fail.
-    pub(crate) fn draw_lines(&self) -> Result<()> {
+    pub(crate) fn draw_lines(&mut self) -> Result<()> {
         let mut stdout = stdout();
         // let (_, term_height) = terminal::size()?;
         execute!(
@@ -466,6 +471,11 @@ impl<Buff: TextBuffer> Editor<Buff> {
             crossterm::cursor::MoveTo(0, 0),
         )?;
 
+        if self.is_initial_launch {
+            draw_ascii_art()?;
+            self.is_initial_launch = false;
+            return Ok(())
+        }
         for (i, line) in self
             .buffer
             .get_full_lines_buffer_window(Some(self.view_window.top), Some(self.view_window.bot))?
