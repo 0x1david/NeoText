@@ -10,6 +10,8 @@ use crate::{
     notif_bar, repeat, Result,
 };
 
+const SCROLL_JUMP_DISTANCE: usize = 25;
+
 use super::{FindMode, Modal};
 
 impl<Buff: TextBuffer> Editor<Buff> {
@@ -115,7 +117,21 @@ impl<Buff: TextBuffer> Editor<Buff> {
         carry_over: Option<i32>,
         modifiers: KeyModifiers,
     ) -> Result<()> {
-        if modifiers.contains(KeyModifiers::CONTROL) {};
+        if modifiers.contains(KeyModifiers::CONTROL) {
+            match ch {
+                'd' => {repeat!{{
+                    self.cursor.jump_down(SCROLL_JUMP_DISTANCE);
+                    self.center_view_window();
+                }; carry_over
+                }}
+                'u' => {repeat!{{
+                    self.cursor.jump_up(SCROLL_JUMP_DISTANCE);
+                    self.center_view_window();
+                }; carry_over
+                }},
+                _ => ()
+            }
+        };
         Ok(())
     }
     fn handle_char_input(&mut self, ch: char, carry_over: Option<i32>) -> Result<()> {

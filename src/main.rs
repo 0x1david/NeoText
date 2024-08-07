@@ -16,7 +16,7 @@
 //      Different cursors
 //
 // Bugs To Fix:
-//      Line Numbers get disoriented after big jumps(probably due to the Screen Centering)
+//      Jumps out  of bounds crash the program
 #![allow(dead_code)]
 use std::{io::stdout, path::PathBuf};
 

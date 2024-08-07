@@ -137,7 +137,7 @@ impl Cursor {
     #[inline]
     pub fn jump_down(&mut self, dist: usize) {
         self.previous_pos = self.pos;
-        self.pos.line = self.line_max.min(self.line() + dist);
+        self.pos.line = self.line() + dist;
     }
 
     /// Updates the location the cursor points at depending on the current active modal state.

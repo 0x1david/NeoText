@@ -196,7 +196,6 @@ impl<Buff: TextBuffer> Editor<Buff> {
         let original_pos = self.cursor.previous_pos;
         if self.pos().line > self.buffer.max_line() {
             self.cursor.pos = original_pos;
-            notif_bar!(format!("Returning to {original_pos}"));
             return;
         }
         let new_pos = self.pos();
@@ -514,7 +513,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         };
 
         let current_pos = self.pos();
-        let top_border = current_pos.line - top_half as usize;
+        let top_border = current_pos.line - top_half as usize + 2;
         let bottom_border = current_pos.line + bottom_half as usize;
         self.view_window = {
             ViewWindow {
