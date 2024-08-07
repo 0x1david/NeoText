@@ -16,7 +16,6 @@
 //      Different cursors
 //
 // Bugs To Fix:
-//      Finds stopped working (? and / modes)
 //      Line Numbers get disoriented after big jumps(probably due to the Screen Centering)
 //      `w` command crashes if its on the end of line when pressed
 #![allow(dead_code)]
@@ -39,10 +38,10 @@ mod utils;
 
 fn main() {
     let _ = execute!(stdout(), EnterAlternateScreen);
-    let buf = VecBuffer::default();
-    let mut editor = Editor::new(buf, true);
-    // let p = "/home/flxvs/repositories/rust/text-editor/src/buffer.rs".into();
-    // let mut editor = new_from_file(p);
+    // let buf = VecBuffer::default();
+    // let mut editor = Editor::new(buf, true);
+    let p = "/home/flxvs/repositories/rust/text-editor/src/buffer.rs".into();
+    let mut editor = new_from_file(p);
     match editor.run() {
         Err(Error::ExitCall) => (),
         Ok(_) => panic!("Editor should never return without an error"),
