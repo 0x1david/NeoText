@@ -1,19 +1,25 @@
 // Features to implement:
-//      Regex Command Processing
-//      create a better DS for buffer
-//      Marks
-//      Undo and Redo
-//      Configuration parsing and configurable controller
-//      Visual Mode
-//      Macros
-//      Scrolling
-//      LSP Integration
-//      Telescope
-//      Copy && Paste
-//      Programmable Extensions
-//      Screen Splits
-//      File Commands (After pressing :)
-//      Different cursors
+//      TEXT EDITING:
+//          Undo and Redo
+//          Regex Command Processing
+//          Visual Mode
+//          Marks
+//          Macros
+//          Copy && Paste
+//
+//      PERFORMANCE:
+//          create a better DS for buffer
+//
+//      NEW CRATES:
+//          Telescope
+//          Configuration parsing and configurable controller
+//          LSP Integration
+//          Programmable Extensions
+//
+//      ADDONS:
+//          Screen Splits
+//          File Commands (After pressing :)  -- This is easy just inconvenient while development 
+//          Different cursors (Visuals)
 //
 // Bugs To Fix:
 //      Jumps out  of bounds crash the program

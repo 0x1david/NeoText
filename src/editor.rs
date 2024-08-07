@@ -184,7 +184,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             "?" => self.buffer.rfind(pat, self.last_normal_pos())?,
             otherwise => Err(Error::ProgrammingBug {
                 descr: format!(
-                    "Only commands starting with `?` or `/` should be found {otherwise}"
+                    "Only commands starting with `?` or `/` should be found. Instead got ``{otherwise}"
                 ),
             })?,
         };
