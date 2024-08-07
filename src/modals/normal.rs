@@ -75,9 +75,12 @@ impl<Buff: TextBuffer> Editor<Buff> {
     }
     fn find_next_char(&mut self, pat: char, carry_over: Option<i32>) -> Result<()> {
         repeat! {{
-            let mut pos_without_current_loc = self.pos();
-            pos_without_current_loc.col += 1;
-            self.go(self.buffer.find(pat, pos_without_current_loc)?);
+            let mut pos = self.pos();
+            if self.buffer.max_col(pos) > pos.col + 1 {
+                pos.col += 1;
+            };
+
+            self.go(self.buffer.find(pat, pos)?);
         }; carry_over}
         Ok(())
     }
@@ -210,8 +213,8 @@ impl<Buff: TextBuffer> Editor<Buff> {
             pos.col += 1;
         };
 
-        pos.col += 1;
-        let dest = self.buffer.find(|ch| !char::is_alphanumeric(ch), pos)?;
+        let mut dest = self.buffer.find(|ch| !char::is_whitespace(ch), pos)?;
+        dest = self.buffer.find(|ch| !char::is_alphanumeric(ch), dest)?;
         self.go(dest);
         Ok(())
     }

@@ -17,7 +17,6 @@
 //
 // Bugs To Fix:
 //      Line Numbers get disoriented after big jumps(probably due to the Screen Centering)
-//      `w` command crashes if its on the end of line when pressed
 #![allow(dead_code)]
 use std::{io::stdout, path::PathBuf};
 
