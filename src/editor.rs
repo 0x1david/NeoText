@@ -4,6 +4,7 @@ use crate::bars::{
     INFO_BAR, NOTIFICATION_BAR, NOTIFICATION_BAR_Y_LOCATION,
 };
 use crate::buffer::TextBuffer;
+use crate::copy_register::CopyRegister;
 use crate::cursor::{Cursor, LineCol};
 use crate::modals::{FindMode, Modal};
 use crate::notif_bar;
@@ -44,6 +45,7 @@ pub struct Editor<Buff: TextBuffer> {
     // Specifies whether a drawing of lines has happened before and if the app was opened without a
     // target file
     pub(crate) is_initial_launch: bool,
+    copy_register: CopyRegister,
 }
 
 impl<Buff: TextBuffer> Drop for Editor<Buff> {
@@ -77,6 +79,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             history_pointer: 0,
             view_window: ViewWindow::default(),
             is_initial_launch: launch_without_target,
+            copy_register: CopyRegister::default(),
         }
     }
 

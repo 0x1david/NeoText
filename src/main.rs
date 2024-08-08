@@ -1,8 +1,8 @@
 // Features to implement:
 //      TEXT EDITING:
 //          Copy && Paste
-//          Regex Command Processing
 //          Visual Mode
+//          Regex Command Processing
 //          Undo and Redo
 //
 //          Macros
@@ -35,6 +35,7 @@ use error::{Error, Result};
 
 mod bars;
 mod buffer;
+mod copy_register;
 mod cursor;
 mod editor;
 mod modals;
