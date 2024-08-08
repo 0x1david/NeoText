@@ -22,7 +22,7 @@ impl Default for ViewWindow {
         );
 
         Self {
-            top: Default::default(),
+            top: LineCol::default(),
             bot: LineCol {
                 line: normal_window_height,
                 col: 0,
@@ -32,7 +32,7 @@ impl Default for ViewWindow {
 }
 
 impl ViewWindow {
-    pub fn calculate_view_cursor(&self, main_cursor_pos: LineCol) -> LineCol {
+    pub const fn calculate_view_cursor(&self, main_cursor_pos: LineCol) -> LineCol {
         LineCol {
             line: main_cursor_pos.line - self.top.line,
             col: main_cursor_pos.col
@@ -46,13 +46,13 @@ impl Add<isize> for ViewWindow {
     type Output = Self;
 
     fn add(self, rhs: isize) -> Self::Output {
-        ViewWindow {
+        Self {
             top: LineCol {
-                line: self.top.line + rhs as usize,
+                line: self.top.line + rhs.unsigned_abs(),
                 col: 0,
             },
             bot: LineCol {
-                line: self.bot.line + rhs as usize,
+                line: self.bot.line + rhs.unsigned_abs(),
                 col: 0,
             },
         }
@@ -64,13 +64,13 @@ impl Sub<isize> for ViewWindow {
 
     /// Moves the window down by one line
     fn sub(self, rhs: isize) -> Self::Output {
-        ViewWindow {
+        Self {
             top: LineCol {
-                line: self.top.line.saturating_sub(rhs as usize),
+                line: self.top.line.saturating_sub(rhs.unsigned_abs()),
                 col: 0,
             },
             bot: LineCol {
-                line: self.bot.line - rhs as usize,
+                line: self.bot.line - rhs.unsigned_abs(),
                 col: 0,
             },
         }
@@ -79,14 +79,14 @@ impl Sub<isize> for ViewWindow {
 
 impl AddAssign<isize> for ViewWindow {
     fn add_assign(&mut self, rhs: isize) {
-        self.top.line = self.top.line.saturating_sub(rhs as usize);
-        self.bot.line = self.bot.line.saturating_sub(rhs as usize);
+        self.top.line = self.top.line.saturating_sub(rhs.unsigned_abs());
+        self.bot.line = self.bot.line.saturating_sub(rhs.unsigned_abs());
     }
 }
 
 impl SubAssign<isize> for ViewWindow {
     fn sub_assign(&mut self, rhs: isize) {
-        self.top.line = self.top.line.saturating_add(rhs as usize);
-        self.bot.line = self.bot.line.saturating_add(rhs as usize);
+        self.top.line = self.top.line.saturating_add(rhs.unsigned_abs());
+        self.bot.line = self.bot.line.saturating_add(rhs.unsigned_abs());
     }
 }

@@ -22,10 +22,7 @@ pub fn draw_ascii_art() -> Result<()> {
     let (term_width, term_height) = terminal::size()?;
     let art_lines: Vec<&str> = ASCII_INTRODUCTION_SCREEN2.lines().collect();
 
-    fn visible_length(s: &str) -> usize {
-        s.chars().filter(|c| !c.is_control()).count()
-    }
-
+    let visible_length = |s: &str| s.chars().filter(|c| !c.is_control()).count();
     let art_width = art_lines
         .iter()
         .map(|line| visible_length(line))
@@ -39,6 +36,7 @@ pub fn draw_ascii_art() -> Result<()> {
     for (i, line) in art_lines.iter().enumerate() {
         let visible_line_length = visible_length(line);
         let padding = " ".repeat(art_width - visible_line_length);
+        #[allow(clippy::cast_possible_truncation)]
         execute!(
             stdout,
             cursor::MoveTo(start_x as u16, (start_y + i) as u16),

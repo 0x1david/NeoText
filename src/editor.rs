@@ -312,7 +312,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
                                 let hist = self.get_from_search_history(self.history_pointer, *find_mode);
                                 if let Some(h) = hist {
                                     if !h.is_empty() {
-                                        self.buffer.replace_command_text(h)
+                                        self.buffer.replace_command_text(h);
                                     }
                                 }
                             }
@@ -354,7 +354,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
 
         if let Event::Key(key_event) = event::read()? {
             if key_event.code != KeyCode::Up && key_event.code != KeyCode::Down {
-                self.history_pointer = 0
+                self.history_pointer = 0;
             }
             match key_event.code {
                 KeyCode::Enter => return Ok(true),
@@ -420,6 +420,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     fn create_line_numbers(&self, stdout: &mut Stdout, line_number: usize) -> Result<()> {
         execute!(stdout, style::SetForegroundColor(style::Color::Green))?;
         let rel_line_number = (line_number as i64 - self.pos().line as i64 - 1).abs();
+
         print!(
             "{line_number:>width$}{separator}",
             line_number = if rel_line_number == 0 {
@@ -497,6 +498,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     /// This function can return an error if the terminal cursor movement operation fails.
     pub fn move_cursor(&self) {
         let cursor = self.view_window.calculate_view_cursor(self.pos());
+        #[allow(clippy::cast_possible_truncation)]
         let _ = execute!(
             stdout(),
             crossterm::cursor::MoveTo(cursor.col as u16, cursor.line as u16,)

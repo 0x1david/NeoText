@@ -6,30 +6,30 @@ const MAX_NUMBERED_REGISTERS: usize = 10;
 
 pub struct CopyRegister {
     named_registers: HashMap<char, CopyObject>,
-    /// VecDeque is used instead of a Vec to avoid having to use indexing by numbers not matching
+    /// `VecDeque` is used instead of a Vec to avoid having to use indexing by numbers not matching
     /// the register (e.g. storing register 0 at index 9, due to the pushing)
     numbered_register: VecDeque<CopyObject>,
 }
 
-enum CopyObject {
+pub enum CopyObject {
     // for Yanking Text
     Text(String),
     // Later macro implementation will use ActionSequences
     ActionSequence(ActionSequence),
 }
 impl CopyObject {
-    fn replace(&mut self, obj: CopyObject) {
-        *self = obj
+    fn replace(&mut self, obj: Self) {
+        *self = obj;
     }
-    fn as_text(&self) -> Option<&String> {
-        if let CopyObject::Text(text) = self {
+    const fn as_text(&self) -> Option<&String> {
+        if let Self::Text(text) = self {
             Some(text)
         } else {
             None
         }
     }
-    fn as_macro(&self) -> Option<&ActionSequence> {
-        if let CopyObject::ActionSequence(seq) = self {
+    const fn as_macro(&self) -> Option<&ActionSequence> {
+        if let Self::ActionSequence(seq) = self {
             Some(seq)
         } else {
             None
@@ -37,7 +37,7 @@ impl CopyObject {
     }
 }
 
-struct ActionSequence;
+pub struct ActionSequence;
 impl Default for CopyRegister {
     fn default() -> Self {
         let mut numbered_register = VecDeque::with_capacity(MAX_NUMBERED_REGISTERS);
@@ -72,9 +72,10 @@ impl CopyRegister {
         &mut self.numbered_register[0]
     }
     pub fn get_from_register(&self, named: Option<char>) -> Option<&CopyObject> {
-        named.map_or(Some(self.unnamed_register()), |reg| {
-            self.named_registers.get(&reg)
-        })
+        named.map_or_else(
+            || Some(self.unnamed_register()),
+            |reg| self.named_registers.get(&reg),
+        )
     }
     pub fn push_into_numbered_registers(&mut self, text: String) {
         self.numbered_register.insert(1, CopyObject::Text(text));

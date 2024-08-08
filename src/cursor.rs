@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, fmt::Display};
 
-use crate::{modals::Modal, notif_bar};
+use crate::modals::Modal;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct LineCol {

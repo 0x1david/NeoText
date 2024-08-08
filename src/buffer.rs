@@ -1,5 +1,5 @@
 use crate::{cursor::LineCol, modals::Modal, searcher::Pattern};
-use crate::{notif_bar, Error, Result};
+use crate::{Error, Result};
 use std::collections::VecDeque;
 
 /// Trait defining the interface for a text buffer
@@ -224,10 +224,8 @@ impl TextBuffer for VecBuffer {
     ) -> Result<Vec<String>> {
         let full_text = self.get_normal_text();
 
-        let start_line = from.map(|lc| lc.line).unwrap_or(0);
-        let end_line = to
-            .map(|lc| lc.line)
-            .unwrap_or_else(|| full_text.len().saturating_sub(1));
+        let start_line = from.map_or(0, |lc| lc.line);
+        let end_line = to.map_or_else(|| full_text.len().saturating_sub(1), |lc| lc.line);
 
         if start_line > end_line || start_line >= full_text.len() {
             return Err(Error::InvalidInput);
@@ -238,7 +236,7 @@ impl TextBuffer for VecBuffer {
         Ok(result)
     }
     fn replace_command_text(&mut self, new: String) {
-        self.command = vec![new]
+        self.command = vec![new];
     }
     fn delete_line(&mut self, at: usize) {
         let _ = self.text.remove(at);

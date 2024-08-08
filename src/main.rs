@@ -24,7 +24,7 @@
 //
 // Bugs To Fix:
 //      Jumps out  of bounds crash the program
-#![allow(dead_code)]
+#![allow(dead_code, clippy::cast_possible_wrap)]
 use std::{io::stdout, path::PathBuf};
 
 mod error;
@@ -51,11 +51,10 @@ fn main() {
     let mut editor = new_from_file(p);
     match editor.run() {
         Err(Error::ExitCall) => (),
-        Ok(_) => panic!("Editor should never return without an error"),
-        otherwise => panic!(
-            "Err of type {:?} should be handled before reaching the main function.",
-            otherwise
-        ),
+        Ok(()) => panic!("Editor should never return without an error"),
+        otherwise => {
+            panic!("Err of type {otherwise:?} should be handled before reaching the main function.",)
+        }
     }
 }
 

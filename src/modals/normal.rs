@@ -36,7 +36,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
                     } else if !(key_event.modifiers.is_empty()
                         || (mods == KeyModifiers::SHIFT && ch.is_alphabetic()))
                     {
-                        self.handle_modifiers(ch, carry_over, mods)?;
+                        self.handle_modifiers(ch, carry_over, mods);
                     } else {
                         self.handle_char_input(ch, carry_over)?;
                     }
@@ -111,12 +111,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
     /// Unnecessary until redo and scrolling
-    fn handle_modifiers(
-        &mut self,
-        ch: char,
-        carry_over: Option<i32>,
-        modifiers: KeyModifiers,
-    ) -> Result<()> {
+    fn handle_modifiers(&mut self, ch: char, carry_over: Option<i32>, modifiers: KeyModifiers) {
         if modifiers.contains(KeyModifiers::CONTROL) {
             match ch {
                 'd' => {
@@ -136,7 +131,6 @@ impl<Buff: TextBuffer> Editor<Buff> {
                 _ => (),
             }
         };
-        Ok(())
     }
     fn handle_char_input(&mut self, ch: char, carry_over: Option<i32>) -> Result<()> {
         match ch {
