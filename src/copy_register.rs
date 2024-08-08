@@ -78,7 +78,8 @@ impl CopyRegister {
         )
     }
     pub fn push_into_numbered_registers(&mut self, text: impl Into<String>) {
-        self.numbered_register.insert(1, CopyObject::Text(text.into()));
+        self.numbered_register
+            .insert(1, CopyObject::Text(text.into()));
         if self.numbered_register.len() > MAX_NUMBERED_REGISTERS {
             self.numbered_register.pop_back();
         }

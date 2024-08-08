@@ -29,7 +29,10 @@ use std::{io::stdout, path::PathBuf};
 
 mod error;
 use buffer::VecBuffer;
-use crossterm::{execute, terminal::EnterAlternateScreen};
+use crossterm::{
+    execute,
+    terminal::{DisableLineWrap, EnterAlternateScreen},
+};
 use editor::Editor;
 use error::{Error, Result};
 
@@ -44,7 +47,7 @@ mod utils;
 mod view_window;
 
 fn main() {
-    let _ = execute!(stdout(), EnterAlternateScreen);
+    let _ = execute!(stdout(), EnterAlternateScreen, DisableLineWrap);
     // let buf = VecBuffer::default();
     // let mut editor = Editor::new(buf, true);
     let p = "/home/flxvs/repositories/rust/text-editor/src/buffer.rs".into();

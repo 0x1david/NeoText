@@ -20,7 +20,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         carry_over: Option<i32>,
         prev_char: Option<char>,
     ) -> Result<()> {
-        self.draw_lines()?;
+        self.draw_lines(None)?;
         draw_bar(&INFO_BAR, |term_width, _| {
             get_info_bar_content(term_width, &self.mode, &self.pos())
         })?;
@@ -130,7 +130,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
                 }
                 _ => (),
             }
-        };
+        }
     }
     fn handle_char_input(&mut self, ch: char, carry_over: Option<i32>) -> Result<()> {
         match ch {
@@ -143,6 +143,8 @@ impl<Buff: TextBuffer> Editor<Buff> {
                 self.newline();
             }
             ':' => self.set_mode(Modal::Command),
+            'v' => self.set_mode(Modal::Visual),
+            'V' => self.set_mode(Modal::VisualLine),
             '/' => self.set_mode(Modal::Find(FindMode::Forwards)),
             '?' => self.set_mode(Modal::Find(FindMode::Backwards)),
             'h' => repeat!(self.cursor.bump_left(); carry_over),

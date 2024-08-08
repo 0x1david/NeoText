@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, fmt::Display};
 
-use crate::modals::Modal;
+use crate::{modals::Modal, repeat};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct LineCol {
@@ -130,7 +130,7 @@ impl Cursor {
     #[inline]
     pub fn jump_up(&mut self, dist: usize) {
         self.previous_pos = self.pos;
-        self.pos.line = self.line().saturating_sub(dist);
+        repeat!(self.bump_up(); Some(dist))
     }
 
     /// Moves the cursor down by the specified distance, clamping at the bottom.
@@ -138,20 +138,29 @@ impl Cursor {
     pub fn jump_down(&mut self, dist: usize) {
         self.previous_pos = self.pos;
         self.pos.line = self.line() + dist;
+        repeat!(self.bump_down(); Some(dist))
     }
 
     /// Updates the location the cursor points at depending on the current active modal state.
     pub fn mod_change(&mut self, modal: &Modal) {
         if self.plane.text() {
-            self.last_text_mode_pos = self.pos;
+            if modal.is_visual_line() {
+                self.last_text_mode_pos = LineCol {
+                    line: self.pos.line,
+                    col: 0,
+                }
+            } else {
+                self.last_text_mode_pos = self.pos;
+            }
             self.previous_pos = self.pos;
         }
+
         match modal {
             Modal::Command | Modal::Find(_) => {
                 self.plane = CursorPlane::CommandBar;
                 self.pos = LineCol { line: 0, col: 0 };
             }
-            Modal::Normal | Modal::Insert | Modal::Visual => {
+            Modal::Normal | Modal::Insert | Modal::Visual | Modal::VisualLine => {
                 self.plane = CursorPlane::Text;
                 self.pos = self.last_text_mode_pos;
             }

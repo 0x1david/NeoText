@@ -29,6 +29,24 @@ use std::process::exit;
 const MAX_HISTORY: usize = 50;
 const WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS: usize = 4;
 
+#[derive(Debug, Clone, Copy)]
+pub struct Selection {
+    pub start: LineCol,
+    pub end: LineCol,
+}
+
+impl Selection {
+    pub fn line_is_in_selection(&self, line: usize) -> bool {
+        self.start.line < line && self.end.line > line 
+    }
+    pub fn normalized(mut self) -> Self {
+        if self.end < self.start{
+            std::mem::swap(&mut self.end, &mut self.start)
+        };
+        self
+    }
+}
+
 /// The main editor is used as the main API for all commands
 pub struct Editor<Buff: TextBuffer> {
     /// In the first implementation I will start with Vec, for simplicity, fairly early to the dev
@@ -202,6 +220,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
                 Modal::Find(find_mode) => self.run_find(find_mode)?,
                 Modal::Insert => self.run_insert()?,
                 Modal::Visual => self.run_visual()?,
+                Modal::VisualLine => self.run_visual()?,
                 Modal::Command => self.run_command_mode()?,
             };
         }
@@ -255,12 +274,18 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
 
-    #[allow(clippy::unused_self, clippy::needless_pass_by_ref_mut)]
     fn run_visual(&mut self) -> Result<()> {
+        self.draw_lines(None)?;
+        draw_bar(&INFO_BAR, |term_width, _| {
+            get_info_bar_content(term_width, &self.mode, &self.pos())
+        })?;
+        draw_bar(&NOTIFICATION_BAR, |_, _| get_notif_bar_content())?;
+        self.move_cursor();
+        self.force_within_bounds();
         unimplemented!()
     }
     fn run_insert(&mut self) -> Result<()> {
-        self.draw_lines()?;
+        self.draw_lines(None)?;
         draw_bar(&INFO_BAR, |term_width, _| {
             get_info_bar_content(term_width, &self.mode, &self.pos())
         })?;
@@ -341,7 +366,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
     fn run_command(&mut self) -> Result<bool> {
-        self.draw_lines()?;
+        self.draw_lines(None)?;
         draw_bar(&INFO_BAR, |term_width, _| {
             get_info_bar_content(term_width, &self.mode, &self.pos())
         })?;
@@ -386,7 +411,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     ///
     /// # Errors
     /// This function can return an error if terminal operations (e.g., clearing, moving cursor, writing) fail.
-    pub(crate) fn draw_lines(&mut self) -> Result<()> {
+    pub(crate) fn draw_lines(&mut self, selection: Option<Selection>) -> Result<()> {
         let mut stdout = stdout();
         // let (_, term_height) = terminal::size()?;
         execute!(
@@ -400,6 +425,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             self.is_initial_launch = false;
             return Ok(());
         }
+
         for (i, line) in self
             .buffer
             .get_full_lines_buffer_window(Some(self.view_window.top), Some(self.view_window.bot))?
@@ -465,6 +491,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             }
         }
     }
+
     /// Makes sure the cursor is in bounds of the view window, if it isnt' follow the cursor with
     /// the bounds
     pub(crate) fn control_view_window(&mut self) {

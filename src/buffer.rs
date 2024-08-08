@@ -11,7 +11,12 @@ pub trait TextBuffer {
     fn insert(&mut self, at: LineCol, insertable: char) -> Result<LineCol>;
 
     /// Insert text at the specified position
-    fn insert_text(&mut self, at: LineCol, text: impl Into<String>, newline: bool) -> Result<LineCol>;
+    fn insert_text(
+        &mut self,
+        at: LineCol,
+        text: impl Into<String>,
+        newline: bool,
+    ) -> Result<LineCol>;
 
     /// Delete text in the specified range
     fn delete_selection(&mut self, from: LineCol, to: LineCol) -> Result<LineCol>;
@@ -251,7 +256,9 @@ impl TextBuffer for VecBuffer {
     fn set_plane(&mut self, modal: &Modal) {
         self.plane = match modal {
             Modal::Command | Modal::Find(_) => BufferPlane::Command,
-            Modal::Normal | Modal::Insert | Modal::Visual => BufferPlane::Normal,
+            Modal::Normal | Modal::Insert | Modal::Visual | Modal::VisualLine => {
+                BufferPlane::Normal
+            }
         };
     }
     fn max_col(&self, at: LineCol) -> usize {
@@ -560,7 +567,12 @@ impl TextBuffer for VecBuffer {
     /// This function may change the structure of the buffer by adding or modifying lines.
     /// It's the caller's responsibility to ensure that any existing references or indices
     /// into the buffer are updated appropriately after calling this function.
-    fn insert_text(&mut self, at: LineCol, text: impl Into<String>, newline: bool) -> Result<LineCol> {
+    fn insert_text(
+        &mut self,
+        at: LineCol,
+        text: impl Into<String>,
+        newline: bool,
+    ) -> Result<LineCol> {
         let text = text.into();
         if at.line >= self.get_buffer().len() || at.col > self.get_buffer()[at.line].len() {
             return Err(Error::InvalidPosition);
