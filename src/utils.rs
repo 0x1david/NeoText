@@ -17,21 +17,21 @@ macro_rules! repeat {
     }};
 }
 
-
 pub fn draw_ascii_art() -> Result<()> {
     let mut stdout = stdout();
     let (term_width, term_height) = terminal::size()?;
     let art_lines: Vec<&str> = ASCII_INTRODUCTION_SCREEN2.lines().collect();
-    
+
     fn visible_length(s: &str) -> usize {
         s.chars().filter(|c| !c.is_control()).count()
     }
-    
-    let art_width = art_lines.iter()
+
+    let art_width = art_lines
+        .iter()
         .map(|line| visible_length(line))
         .max()
         .unwrap_or(0);
-    
+
     let art_height = art_lines.len();
     let start_y = (term_height as usize - art_height) / 2;
     let start_x = (term_width as usize - art_width) / 2;

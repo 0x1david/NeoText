@@ -1,7 +1,7 @@
 #![allow(clippy::match_wild_err_arm)]
 use crate::bars::{
     draw_bar, get_debug_messages, get_info_bar_content, get_notif_bar_content, COMMAND_BAR,
-    INFO_BAR, INFO_BAR_Y_LOCATION, NOTIFICATION_BAR, NOTIFICATION_BAR_Y_LOCATION,
+    INFO_BAR, NOTIFICATION_BAR, NOTIFICATION_BAR_Y_LOCATION,
 };
 use crate::buffer::TextBuffer;
 use crate::cursor::{Cursor, LineCol};
@@ -16,97 +16,17 @@ use crossterm::{
     execute,
     terminal::{self, ClearType},
 };
+pub const LINE_NUMBER_SEPARATOR_EMPTY_COLUMNS: usize = 4;
+pub const LINE_NUMBER_RESERVED_COLUMNS: usize = 5;
 
 use std::collections::VecDeque;
 // use crate::modal::Modal;
+use crate::view_window::ViewWindow;
 use std::io::{stdout, Stdout};
-use std::ops::{Add, AddAssign, Sub, SubAssign};
 use std::process::exit;
 
 const MAX_HISTORY: usize = 50;
 const WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS: usize = 4;
-const LINE_NUMBER_SEPARATOR_EMPTY_COLUMNS: usize = 4;
-const LINE_NUMBER_RESERVED_COLUMNS: usize = 5;
-
-#[derive(Clone, Copy, Debug)]
-pub struct ViewWindow {
-    pub top: LineCol,
-    pub bot: LineCol,
-}
-
-impl Default for ViewWindow {
-    fn default() -> Self {
-        let (_, term_height) =
-            terminal::size().expect("Couldn't read information about terminal size");
-        let normal_window_height = usize::from(term_height).saturating_sub(1).saturating_sub((NOTIFICATION_BAR_Y_LOCATION as usize).max(INFO_BAR_Y_LOCATION as usize));
-
-        Self {
-            top: Default::default(),
-            bot: LineCol {
-                line: normal_window_height,
-                col: 0,
-            },
-        }
-    }
-}
-
-impl ViewWindow {
-    pub fn calculate_view_cursor(&self, main_cursor_pos: LineCol) -> LineCol {
-        LineCol {
-            line: main_cursor_pos.line - self.top.line,
-            col: main_cursor_pos.col + LINE_NUMBER_RESERVED_COLUMNS + LINE_NUMBER_SEPARATOR_EMPTY_COLUMNS,
-        }
-    }
-}
-
-impl Add<isize> for ViewWindow {
-    type Output = Self;
-
-    fn add(self, rhs: isize) -> Self::Output {
-        ViewWindow {
-            top: LineCol {
-                line: self.top.line + rhs as usize,
-                col: 0,
-            },
-            bot: LineCol {
-                line: self.bot.line + rhs as usize,
-                col: 0,
-            },
-        }
-    }
-}
-
-impl Sub<isize> for ViewWindow {
-    type Output = Self;
-
-    /// Moves the window down by one line
-    fn sub(self, rhs: isize) -> Self::Output {
-        ViewWindow {
-            top: LineCol {
-                line: self.top.line.saturating_sub(rhs as usize),
-                col: 0,
-            },
-            bot: LineCol {
-                line: self.bot.line - rhs as usize,
-                col: 0,
-            },
-        }
-    }
-}
-
-impl AddAssign<isize> for ViewWindow {
-    fn add_assign(&mut self, rhs: isize) {
-        self.top.line = self.top.line.saturating_sub(rhs as usize);
-        self.bot.line = self.bot.line.saturating_sub(rhs as usize);
-    }
-}
-
-impl SubAssign<isize> for ViewWindow {
-    fn sub_assign(&mut self, rhs: isize) {
-        self.top.line = self.top.line.saturating_add(rhs as usize);
-        self.bot.line = self.bot.line.saturating_add(rhs as usize);
-    }
-}
 
 /// The main editor is used as the main API for all commands
 pub struct Editor<Buff: TextBuffer> {
@@ -129,7 +49,11 @@ pub struct Editor<Buff: TextBuffer> {
 impl<Buff: TextBuffer> Drop for Editor<Buff> {
     fn drop(&mut self) {
         let _ = terminal::disable_raw_mode();
-        let _ = execute!(stdout(), terminal::Clear(ClearType::All), LeaveAlternateScreen);
+        let _ = execute!(
+            stdout(),
+            terminal::Clear(ClearType::All),
+            LeaveAlternateScreen
+        );
     }
 }
 
@@ -152,7 +76,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             backwards_history: VecDeque::new(),
             history_pointer: 0,
             view_window: ViewWindow::default(),
-            is_initial_launch: launch_without_target
+            is_initial_launch: launch_without_target,
         }
     }
 
@@ -221,7 +145,6 @@ impl<Buff: TextBuffer> Editor<Buff> {
         self.cursor.mod_change(&modal);
         self.buffer.set_plane(&modal);
         self.mode = modal;
-
     }
 
     #[inline]
@@ -473,7 +396,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         if self.is_initial_launch {
             draw_ascii_art()?;
             self.is_initial_launch = false;
-            return Ok(())
+            return Ok(());
         }
         for (i, line) in self
             .buffer
@@ -482,7 +405,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             .enumerate()
         {
             let line_number = self.view_window.top.line + i + 1; // +1 because line numbers typically start at 1
-                                                                 
+
             execute!(stdout, terminal::Clear(ClearType::CurrentLine))?;
             self.create_line_numbers(&mut stdout, line_number)?;
 
@@ -492,15 +415,20 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
     fn create_line_numbers(&self, stdout: &mut Stdout, line_number: usize) -> Result<()> {
-            execute!(stdout, style::SetForegroundColor(style::Color::Green))?;
-            let rel_line_number = (line_number as i64 - self.pos().line as i64 - 1).abs();
-            print!("{line_number:>width$}{separator}",
-                line_number = if rel_line_number == 0 {line_number as i64} else {rel_line_number},
-                width = LINE_NUMBER_RESERVED_COLUMNS,
-                separator = " ".repeat(LINE_NUMBER_SEPARATOR_EMPTY_COLUMNS)
-            );
-            execute!(stdout, ResetColor)?;
-            Ok(())
+        execute!(stdout, style::SetForegroundColor(style::Color::Green))?;
+        let rel_line_number = (line_number as i64 - self.pos().line as i64 - 1).abs();
+        print!(
+            "{line_number:>width$}{separator}",
+            line_number = if rel_line_number == 0 {
+                line_number as i64
+            } else {
+                rel_line_number
+            },
+            width = LINE_NUMBER_RESERVED_COLUMNS,
+            separator = " ".repeat(LINE_NUMBER_SEPARATOR_EMPTY_COLUMNS)
+        );
+        execute!(stdout, ResetColor)?;
+        Ok(())
     }
 
     pub(crate) fn center_view_window(&mut self) {

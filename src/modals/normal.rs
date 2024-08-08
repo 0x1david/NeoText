@@ -119,17 +119,21 @@ impl<Buff: TextBuffer> Editor<Buff> {
     ) -> Result<()> {
         if modifiers.contains(KeyModifiers::CONTROL) {
             match ch {
-                'd' => {repeat!{{
-                    self.cursor.jump_down(SCROLL_JUMP_DISTANCE);
-                    self.center_view_window();
-                }; carry_over
-                }}
-                'u' => {repeat!{{
-                    self.cursor.jump_up(SCROLL_JUMP_DISTANCE);
-                    self.center_view_window();
-                }; carry_over
-                }},
-                _ => ()
+                'd' => {
+                    repeat! {{
+                        self.cursor.jump_down(SCROLL_JUMP_DISTANCE);
+                        self.center_view_window();
+                    }; carry_over
+                    }
+                }
+                'u' => {
+                    repeat! {{
+                        self.cursor.jump_up(SCROLL_JUMP_DISTANCE);
+                        self.center_view_window();
+                    }; carry_over
+                    }
+                }
+                _ => (),
             }
         };
         Ok(())

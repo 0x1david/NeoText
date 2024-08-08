@@ -1,11 +1,12 @@
 // Features to implement:
 //      TEXT EDITING:
-//          Undo and Redo
+//          Copy && Paste
 //          Regex Command Processing
 //          Visual Mode
-//          Marks
+//          Undo and Redo
+//
 //          Macros
-//          Copy && Paste
+//          Marks
 //
 //      PERFORMANCE:
 //          create a better DS for buffer
@@ -18,7 +19,7 @@
 //
 //      ADDONS:
 //          Screen Splits
-//          File Commands (After pressing :)  -- This is easy just inconvenient while development 
+//          File Commands (After pressing :)  -- This is easy just inconvenient while development
 //          Different cursors (Visuals)
 //
 // Bugs To Fix:
@@ -34,12 +35,12 @@ use error::{Error, Result};
 
 mod bars;
 mod buffer;
-mod cli;
 mod cursor;
 mod editor;
 mod modals;
 mod searcher;
 mod utils;
+mod view_window;
 
 fn main() {
     let _ = execute!(stdout(), EnterAlternateScreen);
@@ -75,11 +76,14 @@ pub fn new_from_file(p: PathBuf) -> Editor<VecBuffer> {
         Err(e) => panic!("{}", e),
         Ok(content) => content,
     };
-    Editor::new(VecBuffer::new(
-        String::from_utf8(content)
-            .expect("Invalid utf8 file")
-            .lines()
-            .map(String::from)
-            .collect(),
-    ), false)
+    Editor::new(
+        VecBuffer::new(
+            String::from_utf8(content)
+                .expect("Invalid utf8 file")
+                .lines()
+                .map(String::from)
+                .collect(),
+        ),
+        false,
+    )
 }
