@@ -84,8 +84,8 @@ impl<Buff: TextBuffer> Editor<Buff> {
     }
 
     /// Stores a command in the search history
-    fn add_to_search_history(&mut self, command: String) {
-        self.forwards_history.push_front(command);
+    fn add_to_search_history(&mut self, command: impl Into<String>) {
+        self.forwards_history.push_front(command.into());
         if self.forwards_history.len() > MAX_HISTORY {
             self.forwards_history.pop_back();
         }
@@ -103,7 +103,6 @@ impl<Buff: TextBuffer> Editor<Buff> {
         let pat = self
             .forwards_history
             .front()
-            .map(String::as_str)
             .ok_or(Error::NoCommandAvailable)?;
         let (flag, pat) = pat.split_at(1);
         match flag {

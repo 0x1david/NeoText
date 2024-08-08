@@ -50,8 +50,8 @@ impl Default for CopyRegister {
 }
 
 impl CopyRegister {
-    pub fn yank(&mut self, text: String, named: Option<char>) -> Result<()> {
-        let text = CopyObject::Text(text);
+    pub fn yank(&mut self, text: impl Into<String>, named: Option<char>) -> Result<()> {
+        let text = CopyObject::Text(text.into());
 
         if let Some(reg) = named {
             if !reg.is_alphabetic() || !reg.is_ascii_lowercase() {
@@ -77,8 +77,8 @@ impl CopyRegister {
             |reg| self.named_registers.get(&reg),
         )
     }
-    pub fn push_into_numbered_registers(&mut self, text: String) {
-        self.numbered_register.insert(1, CopyObject::Text(text));
+    pub fn push_into_numbered_registers(&mut self, text: impl Into<String>) {
+        self.numbered_register.insert(1, CopyObject::Text(text.into()));
         if self.numbered_register.len() > MAX_NUMBERED_REGISTERS {
             self.numbered_register.pop_back();
         }

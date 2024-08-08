@@ -11,7 +11,7 @@ pub trait TextBuffer {
     fn insert(&mut self, at: LineCol, insertable: char) -> Result<LineCol>;
 
     /// Insert text at the specified position
-    fn insert_text(&mut self, at: LineCol, text: String, newline: bool) -> Result<LineCol>;
+    fn insert_text(&mut self, at: LineCol, text: impl Into<String>, newline: bool) -> Result<LineCol>;
 
     /// Delete text in the specified range
     fn delete_selection(&mut self, from: LineCol, to: LineCol) -> Result<LineCol>;
@@ -64,7 +64,7 @@ pub trait TextBuffer {
     /// Get the entire text for the command buffer
     fn get_command_text(&self) -> &[String];
     /// Get the entire text for the command buffer
-    fn replace_command_text(&mut self, new: String);
+    fn replace_command_text(&mut self, new: impl Into<String>);
 
     /// Get maximum line bound for the current buffer
     fn max_line(&self) -> usize;
@@ -235,8 +235,8 @@ impl TextBuffer for VecBuffer {
         let result = full_text[start_line..=end_line].to_vec();
         Ok(result)
     }
-    fn replace_command_text(&mut self, new: String) {
-        self.command = vec![new];
+    fn replace_command_text(&mut self, new: impl Into<String>) {
+        self.command = vec![new.into()];
     }
     fn delete_line(&mut self, at: usize) {
         let _ = self.text.remove(at);
@@ -560,7 +560,8 @@ impl TextBuffer for VecBuffer {
     /// This function may change the structure of the buffer by adding or modifying lines.
     /// It's the caller's responsibility to ensure that any existing references or indices
     /// into the buffer are updated appropriately after calling this function.
-    fn insert_text(&mut self, at: LineCol, text: String, newline: bool) -> Result<LineCol> {
+    fn insert_text(&mut self, at: LineCol, text: impl Into<String>, newline: bool) -> Result<LineCol> {
+        let text = text.into();
         if at.line >= self.get_buffer().len() || at.col > self.get_buffer()[at.line].len() {
             return Err(Error::InvalidPosition);
         } else if text.is_empty() {
