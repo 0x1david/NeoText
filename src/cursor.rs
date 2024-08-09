@@ -23,7 +23,6 @@ impl PartialOrd for LineCol {
     }
 }
 
-
 #[derive(Debug, Clone, Copy)]
 pub struct Selection {
     pub start: LineCol,
@@ -32,7 +31,7 @@ pub struct Selection {
 
 impl Selection {
     pub const fn line_is_in_selection(&self, line: usize) -> bool {
-        self.start.line < line && self.end.line > line 
+        self.start.line < line && self.end.line > line
     }
     pub fn normalized(mut self) -> Self {
         if self.end < self.start {
@@ -123,7 +122,6 @@ impl Cursor {
     /// place.
     #[inline]
     pub fn bump_up(&mut self) {
-        self.previous_pos = self.pos;
         if self.line() != 0 {
             self.pos.line -= 1;
         }
@@ -160,10 +158,8 @@ impl Cursor {
 
     /// Moves the cursor down by the specified distance, clamping at the bottom.
     #[inline]
-    pub fn jump_down(&mut self, dist: usize) {
-        self.previous_pos = self.pos;
-        self.pos.line = self.line() + dist;
-        repeat!(self.bump_down(); Some(dist));
+    pub fn jump_down(&mut self, dist: usize, max: usize) {
+        repeat!(self.bump_down(); Some(dist), self.line() == max);
     }
 
     /// Updates the location the cursor points at depending on the current active modal state.

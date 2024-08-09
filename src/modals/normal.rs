@@ -3,7 +3,12 @@ use std::process::exit;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 
 use crate::{
-    bars::{draw_bar, get_info_bar_content, get_notif_bar_content, INFO_BAR, NOTIFICATION_BAR}, buffer::TextBuffer, cursor::LineCol, editor::Editor, error::Error, notif_bar, repeat, Result
+    bars::{draw_bar, get_info_bar_content, get_notif_bar_content, INFO_BAR, NOTIFICATION_BAR},
+    buffer::TextBuffer,
+    cursor::LineCol,
+    editor::Editor,
+    error::Error,
+    notif_bar, repeat, Result,
 };
 
 const SCROLL_JUMP_DISTANCE: usize = 25;
@@ -18,7 +23,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     ) -> Result<()> {
         self.draw_lines()?;
         draw_bar(&INFO_BAR, |term_width, _| {
-            get_info_bar_content(term_width, &self.mode, &self.pos())
+            get_info_bar_content(term_width, &self.mode, self.pos())
         })?;
         draw_bar(&NOTIFICATION_BAR, |_, _| get_notif_bar_content())?;
         self.move_cursor();
@@ -112,7 +117,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             match ch {
                 'd' => {
                     repeat! {{
-                        self.cursor.jump_down(SCROLL_JUMP_DISTANCE);
+                        self.cursor.jump_down(SCROLL_JUMP_DISTANCE, self.buffer.max_line());
                         self.center_view_window();
                     }; carry_over
                     }
@@ -133,17 +138,26 @@ impl<Buff: TextBuffer> Editor<Buff> {
             combination @ ('r' | 't' | 'd' | 'z' | 'f' | 'g' | 'F' | 'T') => {
                 self.run_normal(carry_over, Some(combination))?;
             }
-            'y' => if self.mode.is_any_visual() { 
-                let sel = self.buffer.get_buffer_window(Some(self.cursor.last_text_mode_pos), Some(self.pos()))?;
-                let sel = if self.mode.is_visual_line() {
-                    format!("\n{}", sel.join("\n"))
-                } else {
-                    sel.join("\n").to_string()
-                };
-                self.copy_register.yank(sel, None)?;
-                self.set_mode(Modal::Normal)
+            'y' => {
+                if self.mode.is_any_visual() {
+                    let sel = self.buffer.get_buffer_window(
+                        Some(self.cursor.last_text_mode_pos),
+                        Some(self.pos()),
+                    )?;
+                    let sel = if self.mode.is_visual_line() {
+                        format!("\n{}", sel.join("\n"))
+                    } else {
+                        sel.join("\n").to_string()
+                    };
+                    self.copy_register.yank(sel, None)?;
+                    self.set_mode(Modal::Normal)
+                }
             }
-            'i' => if !self.mode.is_any_visual() { self.set_mode(Modal::Insert) }
+            'i' => {
+                if !self.mode.is_any_visual() {
+                    self.set_mode(Modal::Insert)
+                }
+            }
             'p' => self.paste_register_content(None, false)?,
             'P' => self.paste_register_content(None, true)?,
             'o' => {
@@ -175,24 +189,26 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
     fn paste_register_content(&mut self, register: Option<char>, newline: bool) -> Result<()> {
-                let register_content = self
-                    .copy_register
-                    .get_from_register(register)?
-                    .as_text()
-                    .ok_or(Error::UnexpectedRegisterData)?;
-                let mut pos = self.pos();
-                pos.line -= 1;
-                let dest = self.buffer.insert_text(self.pos(), register_content, newline);
-                let dest = match dest {
-                    Err(Error::InvalidInput) => {
-                        notif_bar!("Register empty.");
-                        self.pos()
-                    },
-                    otherwise => otherwise?
-                };
-                self.go(dest);
-                Ok(())
+        let register_content = self
+            .copy_register
+            .get_from_register(register)?
+            .as_text()
+            .ok_or(Error::UnexpectedRegisterData)?;
+        let mut pos = self.pos();
+        pos.line -= 1;
+        let dest = self
+            .buffer
+            .insert_text(self.pos(), register_content, newline);
+        let dest = match dest {
+            Err(Error::InvalidInput) => {
+                notif_bar!("Register empty.");
+                self.pos()
             }
+            otherwise => otherwise?,
+        };
+        self.go(dest);
+        Ok(())
+    }
 
     fn replace_under_cursor(&mut self, ch: char) -> Result<()> {
         self.delete_under_cursor()?;

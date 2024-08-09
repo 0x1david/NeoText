@@ -6,17 +6,27 @@ use crate::error::Result;
 
 #[macro_export]
 macro_rules! repeat {
-    ($statement:expr; $count:expr) => {{
-        let count = match $count {
-            Some(n) => n,
-            None => 1,
-        };
+    ($statement:expr; $count:expr, $terminator:expr) => {{
+        let count = $count.unwrap_or(1);
         for _ in 0..count {
-            $statement
+            if $terminator {
+                break;
+            }
+            $statement;
+        }
+    }};
+    ($statement:expr; $count:expr) => {{
+        let count = $count.unwrap_or(1);
+        for _ in 0..count {
+            $statement;
+        }
+    }};
+    ($statement:expr) => {{
+        loop {
+            $statement;
         }
     }};
 }
-
 pub fn draw_ascii_art() -> Result<()> {
     let mut stdout = stdout();
     let (term_width, term_height) = terminal::size()?;

@@ -1,5 +1,6 @@
 // Features to implement:
 //      TEXT EDITING:
+//          Syntax Highlighting
 //          Regex Command Processing
 //          Undo and Redo
 //          Terminal Mode
@@ -15,7 +16,6 @@
 //          Configuration parsing and configurable controller
 //          LSP Integration
 //          Programmable Extensions
-//          Syntax Highlighting
 //
 //      ADDONS:
 //          Screen Splits

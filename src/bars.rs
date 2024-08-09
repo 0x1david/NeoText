@@ -15,7 +15,7 @@ pub const NOTIFICATION_BAR_Y_LOCATION: u16 = 0;
 pub const INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE: u16 = 1;
 pub const INFO_BAR_MODAL_INDICATOR_X_LOCATION: u16 = 1;
 pub const NOTIFICATION_BAR_TEXT_X_LOCATION: u16 = 2;
-pub const DEFAULT_FG: Color = Color::White;
+pub const DEFAULT_FG: Color = Color::Reset;
 pub const DEFAULT_BG: Color = Color::Reset;
 
 pub const NOTIFICATION_BAR: BarInfo = BarInfo::new(
@@ -215,8 +215,10 @@ pub fn get_notif_bar_content() -> String {
 /// - Cursor movement fails
 /// - Writing to stdout fails
 /// - Color setting or resetting fails
-pub fn get_info_bar_content(term_width: usize, mode: &Modal, pos: &LineCol) -> String {
+pub fn get_info_bar_content(term_width: usize, mode: &Modal, pos: LineCol) -> String {
     let modal_string = format!("{mode}");
+    let mut pos = pos.clone();
+    pos.line += 1;
     let pos_string = format!("{pos}");
 
     let middle_space = term_width
