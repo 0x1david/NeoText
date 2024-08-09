@@ -23,7 +23,7 @@ pub const LINE_NUMBER_RESERVED_COLUMNS: usize = 5;
 use std::collections::VecDeque;
 // use crate::modal::Modal;
 use crate::view_window::ViewWindow;
-use std::io::{stdout, Stdout};
+use std::io::{stdout, Stdout, Write};
 use std::process::exit;
 
 const MAX_HISTORY: usize = 50;
@@ -406,12 +406,12 @@ impl<Buff: TextBuffer> Editor<Buff> {
             .iter()
             .enumerate()
         {
-            let line_number = self.view_window.top.line + i + 1;
+            let line_number = self.view_window.top.line + i;
 
             execute!(stdout, terminal::Clear(ClearType::CurrentLine))?;
 
-            self.create_line_numbers(&mut stdout, line_number)?;
-            self.draw_line(line, i)?;
+            self.create_line_numbers(&mut stdout, line_number + 1)?;
+            self.draw_line(line, line_number)?;
 
         }
 
@@ -420,17 +420,48 @@ impl<Buff: TextBuffer> Editor<Buff> {
     fn draw_line(&self, line: impl AsRef<str>, absolute_ln: usize) -> Result<()> {
         let line = line.as_ref();
         let selection = Selection::from(&self.cursor).normalized();
+        let mut stdout = stdout();
+
         let line_in_highlight_bounds = absolute_ln >= selection.start.line && absolute_ln <= selection.end.line;
-        let highlight = self.mode.is_visual_line() && line_in_highlight_bounds;
-        if highlight { execute!(stdout(), SetBackgroundColor(Color::White), SetForegroundColor(Color::Black))?; }
+        let highlight_whole_line = (self.mode.is_visual_line() && line_in_highlight_bounds) || absolute_ln > selection.start.line && (absolute_ln < selection.end.line.saturating_sub(1) && self.mode.is_visual());
 
-        println!("{line}\r");
+        if highlight_whole_line {
+            execute!(stdout, SetBackgroundColor(Color::White), SetForegroundColor(Color::Black))?;
+            write!(stdout, "{}\r", line)?;
+            execute!(stdout, ResetColor)?;
+        } else if self.mode.is_visual() && line_in_highlight_bounds {
+            let start_col = if absolute_ln == selection.start.line { selection.start.col } else { 0 };
+            let end_col = if absolute_ln == selection.end.line { selection.end.col } else { line.len() };
 
-        if highlight { 
-            execute!(stdout(), ResetColor)?; 
-        };
+            write!(stdout, "{}", &line[..start_col])?;
+
+            execute!(stdout, SetBackgroundColor(Color::White), SetForegroundColor(Color::Black))?;
+            write!(stdout, "{}", &line[start_col..end_col])?;
+            execute!(stdout, ResetColor)?;
+
+            // Print part after selection
+            write!(stdout, "{}\r", &line[end_col..])?;
+        } else {
+            write!(stdout, "{}\r", line)?;
+        }
+
+        writeln!(stdout)?;
         Ok(())
     }
+    // fn draw_line(&self, line: impl AsRef<str>, absolute_ln: usize) -> Result<()> {
+    //     let line = line.as_ref();
+    //     let selection = Selection::from(&self.cursor).normalized();
+    //     let line_in_highlight_bounds = absolute_ln >= selection.start.line && absolute_ln <= selection.end.line;
+    //     let highlight = self.mode.is_visual_line() && line_in_highlight_bounds;
+    //     if highlight { execute!(stdout(), SetBackgroundColor(Color::White), SetForegroundColor(Color::Black))?; }
+
+    //     println!("{line}\r");
+
+    //     if highlight { 
+    //         execute!(stdout(), ResetColor)?; 
+    //     };
+    //     Ok(())
+    // }
 
     fn create_line_numbers(&self, stdout: &mut Stdout, line_number: usize) -> Result<()> {
         execute!(stdout, style::SetForegroundColor(style::Color::Green))?;

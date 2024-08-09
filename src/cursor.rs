@@ -35,7 +35,7 @@ impl Selection {
         self.start.line < line && self.end.line > line 
     }
     pub fn normalized(mut self) -> Self {
-        if self.end < self.start{
+        if self.end < self.start {
             std::mem::swap(&mut self.end, &mut self.start);
         };
         self
