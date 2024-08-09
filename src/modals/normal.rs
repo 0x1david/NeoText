@@ -3,11 +3,7 @@ use std::process::exit;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 
 use crate::{
-    bars::{draw_bar, get_info_bar_content, get_notif_bar_content, INFO_BAR, NOTIFICATION_BAR},
-    buffer::TextBuffer,
-    cursor::LineCol,
-    editor::Editor,
-    notif_bar, repeat, Result,
+    bars::{draw_bar, get_info_bar_content, get_notif_bar_content, INFO_BAR, NOTIFICATION_BAR}, buffer::TextBuffer, cursor::LineCol, editor::Editor, error::Error, notif_bar, repeat, Result
 };
 
 const SCROLL_JUMP_DISTANCE: usize = 25;
@@ -20,7 +16,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         carry_over: Option<i32>,
         prev_char: Option<char>,
     ) -> Result<()> {
-        self.draw_lines(None)?;
+        self.draw_lines()?;
         draw_bar(&INFO_BAR, |term_width, _| {
             get_info_bar_content(term_width, &self.mode, &self.pos())
         })?;
@@ -52,7 +48,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
 
         Ok(())
     }
-    fn handle_combination_input(
+    pub fn handle_combination_input(
         &mut self,
         ch: char,
         carry_over: Option<i32>,
@@ -111,7 +107,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
     /// Unnecessary until redo and scrolling
-    fn handle_modifiers(&mut self, ch: char, carry_over: Option<i32>, modifiers: KeyModifiers) {
+    pub fn handle_modifiers(&mut self, ch: char, carry_over: Option<i32>, modifiers: KeyModifiers) {
         if modifiers.contains(KeyModifiers::CONTROL) {
             match ch {
                 'd' => {
@@ -132,12 +128,24 @@ impl<Buff: TextBuffer> Editor<Buff> {
             }
         }
     }
-    fn handle_char_input(&mut self, ch: char, carry_over: Option<i32>) -> Result<()> {
+    pub fn handle_char_input(&mut self, ch: char, carry_over: Option<i32>) -> Result<()> {
         match ch {
-            combination @ ('r' | 't' | 'd' | 'y' | 'z' | 'f' | 'g' | 'F' | 'T') => {
+            combination @ ('r' | 't' | 'd' | 'z' | 'f' | 'g' | 'F' | 'T') => {
                 self.run_normal(carry_over, Some(combination))?;
             }
-            'i' => self.set_mode(Modal::Insert),
+            'y' => if self.mode.is_any_visual() { 
+                let sel = self.buffer.get_buffer_window(Some(self.cursor.last_text_mode_pos), Some(self.pos()))?;
+                let sel = if self.mode.is_visual_line() {
+                    format!("\n{}", sel.join("\n"))
+                } else {
+                    sel.join("\n").to_string()
+                };
+                self.copy_register.yank(sel, None)?;
+                self.set_mode(Modal::Normal)
+            }
+            'i' => if !self.mode.is_any_visual() { self.set_mode(Modal::Insert) }
+            'p' => self.paste_register_content(None, false)?,
+            'P' => self.paste_register_content(None, true)?,
             'o' => {
                 self.set_mode(Modal::Insert);
                 self.newline();
@@ -166,6 +174,26 @@ impl<Buff: TextBuffer> Editor<Buff> {
         }
         Ok(())
     }
+    fn paste_register_content(&mut self, register: Option<char>, newline: bool) -> Result<()> {
+                let register_content = self
+                    .copy_register
+                    .get_from_register(register)?
+                    .as_text()
+                    .ok_or(Error::UnexpectedRegisterData)?;
+                let mut pos = self.pos();
+                pos.line -= 1;
+                let dest = self.buffer.insert_text(self.pos(), register_content, newline);
+                let dest = match dest {
+                    Err(Error::InvalidInput) => {
+                        notif_bar!("Register empty.");
+                        self.pos()
+                    },
+                    otherwise => otherwise?
+                };
+                self.go(dest);
+                Ok(())
+            }
+
     fn replace_under_cursor(&mut self, ch: char) -> Result<()> {
         self.delete_under_cursor()?;
         self.push(ch);
@@ -193,13 +221,13 @@ impl<Buff: TextBuffer> Editor<Buff> {
         pos.line = dest;
         self.go(pos);
     }
-    fn move_to_end_of_line(&mut self) {
+    pub fn move_to_end_of_line(&mut self) {
         let mut pos = self.pos();
         let dest = self.buffer.max_col(pos);
         pos.col = dest;
         self.go(pos);
     }
-    fn move_to_first_col(&mut self) {
+    pub fn move_to_first_col(&mut self) {
         let mut pos = self.pos();
         pos.col = 0;
         self.go(pos);

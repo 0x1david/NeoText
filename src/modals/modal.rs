@@ -20,27 +20,30 @@ pub enum FindMode {
 }
 
 impl Modal {
-    pub fn is_normal(&self) -> bool {
+    pub const fn is_normal(&self) -> bool {
         matches!(self, Self::Normal)
     }
 
-    pub fn is_insert(&self) -> bool {
+    pub const fn is_insert(&self) -> bool {
         matches!(self, Self::Insert)
     }
 
-    pub fn is_visual(&self) -> bool {
+    pub const fn is_visual(&self) -> bool {
         matches!(self, Self::Visual)
     }
 
-    pub fn is_visual_line(&self) -> bool {
+    pub const fn is_visual_line(&self) -> bool {
         matches!(self, Self::VisualLine)
     }
+    pub const fn is_any_visual(&self) -> bool {
+        matches!(self, Self::VisualLine) || matches!(self, Self::Visual)
+    }
 
-    pub fn is_find(&self) -> bool {
+    pub const fn is_find(&self) -> bool {
         matches!(self, Self::Find(_))
     }
 
-    pub fn is_command(&self) -> bool {
+    pub const fn is_command(&self) -> bool {
         matches!(self, Self::Command)
     }
 }

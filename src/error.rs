@@ -11,6 +11,7 @@ pub enum Error {
     InvalidInput,
     PatternNotFound,
     NoCommandAvailable,
+    UnexpectedRegisterData,
     ProgrammingBug {
         descr: String,
     },

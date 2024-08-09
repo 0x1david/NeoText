@@ -5,12 +5,12 @@ use crate::bars::{
 };
 use crate::buffer::TextBuffer;
 use crate::copy_register::CopyRegister;
-use crate::cursor::{Cursor, LineCol};
+use crate::cursor::{Cursor, LineCol, Selection};
 use crate::modals::{FindMode, Modal};
 use crate::notif_bar;
 use crate::utils::draw_ascii_art;
 use crate::{Error, Result};
-use crossterm::style::{self, ResetColor};
+use crossterm::style::{self, Color, ResetColor, SetBackgroundColor, SetForegroundColor};
 use crossterm::terminal::LeaveAlternateScreen;
 use crossterm::{
     event::{self, Event, KeyCode},
@@ -29,23 +29,6 @@ use std::process::exit;
 const MAX_HISTORY: usize = 50;
 const WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS: usize = 4;
 
-#[derive(Debug, Clone, Copy)]
-pub struct Selection {
-    pub start: LineCol,
-    pub end: LineCol,
-}
-
-impl Selection {
-    pub fn line_is_in_selection(&self, line: usize) -> bool {
-        self.start.line < line && self.end.line > line 
-    }
-    pub fn normalized(mut self) -> Self {
-        if self.end < self.start{
-            std::mem::swap(&mut self.end, &mut self.start)
-        };
-        self
-    }
-}
 
 /// The main editor is used as the main API for all commands
 pub struct Editor<Buff: TextBuffer> {
@@ -63,7 +46,7 @@ pub struct Editor<Buff: TextBuffer> {
     // Specifies whether a drawing of lines has happened before and if the app was opened without a
     // target file
     pub(crate) is_initial_launch: bool,
-    copy_register: CopyRegister,
+    pub(crate) copy_register: CopyRegister,
 }
 
 impl<Buff: TextBuffer> Drop for Editor<Buff> {
@@ -219,8 +202,8 @@ impl<Buff: TextBuffer> Editor<Buff> {
                 Modal::Normal => self.run_normal(None, None)?,
                 Modal::Find(find_mode) => self.run_find(find_mode)?,
                 Modal::Insert => self.run_insert()?,
-                Modal::Visual => self.run_visual()?,
-                Modal::VisualLine => self.run_visual()?,
+                Modal::Visual => self.run_normal(None, None)?,
+                Modal::VisualLine => self.run_normal(None, None)?,
                 Modal::Command => self.run_command_mode()?,
             };
         }
@@ -274,24 +257,15 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
 
-    fn run_visual(&mut self) -> Result<()> {
-        self.draw_lines(None)?;
-        draw_bar(&INFO_BAR, |term_width, _| {
-            get_info_bar_content(term_width, &self.mode, &self.pos())
-        })?;
-        draw_bar(&NOTIFICATION_BAR, |_, _| get_notif_bar_content())?;
-        self.move_cursor();
-        self.force_within_bounds();
-        unimplemented!()
-    }
     fn run_insert(&mut self) -> Result<()> {
-        self.draw_lines(None)?;
+        self.draw_lines()?;
         draw_bar(&INFO_BAR, |term_width, _| {
             get_info_bar_content(term_width, &self.mode, &self.pos())
         })?;
         draw_bar(&NOTIFICATION_BAR, |_, _| get_notif_bar_content())?;
         self.move_cursor();
         self.force_within_bounds();
+
 
         if let Event::Key(key_event) = event::read()? {
             match key_event.code {
@@ -366,7 +340,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
     fn run_command(&mut self) -> Result<bool> {
-        self.draw_lines(None)?;
+        self.draw_lines()?;
         draw_bar(&INFO_BAR, |term_width, _| {
             get_info_bar_content(term_width, &self.mode, &self.pos())
         })?;
@@ -411,7 +385,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     ///
     /// # Errors
     /// This function can return an error if terminal operations (e.g., clearing, moving cursor, writing) fail.
-    pub(crate) fn draw_lines(&mut self, selection: Option<Selection>) -> Result<()> {
+    pub(crate) fn draw_lines(&mut self) -> Result<()> {
         let mut stdout = stdout();
         // let (_, term_height) = terminal::size()?;
         execute!(
@@ -432,27 +406,44 @@ impl<Buff: TextBuffer> Editor<Buff> {
             .iter()
             .enumerate()
         {
-            let line_number = self.view_window.top.line + i + 1; // +1 because line numbers typically start at 1
+            let line_number = self.view_window.top.line + i + 1;
 
             execute!(stdout, terminal::Clear(ClearType::CurrentLine))?;
-            self.create_line_numbers(&mut stdout, line_number)?;
 
-            println!("{line}\r");
+            self.create_line_numbers(&mut stdout, line_number)?;
+            self.draw_line(line, i)?;
+
         }
 
         Ok(())
     }
+    fn draw_line(&self, line: impl AsRef<str>, absolute_ln: usize) -> Result<()> {
+        let line = line.as_ref();
+        let selection = Selection::from(&self.cursor).normalized();
+        let line_in_highlight_bounds = absolute_ln >= selection.start.line && absolute_ln <= selection.end.line;
+        let highlight = self.mode.is_visual_line() && line_in_highlight_bounds;
+        if highlight { execute!(stdout(), SetBackgroundColor(Color::White), SetForegroundColor(Color::Black))?; }
+
+        println!("{line}\r");
+
+        if highlight { 
+            execute!(stdout(), ResetColor)?; 
+        };
+        Ok(())
+    }
+
     fn create_line_numbers(&self, stdout: &mut Stdout, line_number: usize) -> Result<()> {
         execute!(stdout, style::SetForegroundColor(style::Color::Green))?;
         let rel_line_number = (line_number as i64 - self.pos().line as i64 - 1).abs();
-
-        print!(
-            "{line_number:>width$}{separator}",
-            line_number = if rel_line_number == 0 {
+        let line_number = if rel_line_number == 0 {
                 line_number as i64
             } else {
                 rel_line_number
-            },
+        };
+
+        print!(
+            "{line_number:>width$}{separator}",
+            line_number = line_number,
             width = LINE_NUMBER_RESERVED_COLUMNS,
             separator = " ".repeat(LINE_NUMBER_SEPARATOR_EMPTY_COLUMNS)
         );

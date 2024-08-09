@@ -23,7 +23,36 @@ impl PartialOrd for LineCol {
     }
 }
 
+
+#[derive(Debug, Clone, Copy)]
+pub struct Selection {
+    pub start: LineCol,
+    pub end: LineCol,
+}
+
+impl Selection {
+    pub const fn line_is_in_selection(&self, line: usize) -> bool {
+        self.start.line < line && self.end.line > line 
+    }
+    pub fn normalized(mut self) -> Self {
+        if self.end < self.start{
+            std::mem::swap(&mut self.end, &mut self.start);
+        };
+        self
+    }
+}
+
+impl From<&Cursor> for Selection {
+    fn from(value: &Cursor) -> Self {
+        Self {
+            start: value.last_text_mode_pos,
+            end: value.pos,
+        }
+    }
+}
+
 /// The overarching cursor struct
+#[derive(Clone, Debug)]
 pub struct Cursor {
     pub pos: LineCol,
     pub previous_pos: LineCol,
@@ -130,7 +159,7 @@ impl Cursor {
     #[inline]
     pub fn jump_up(&mut self, dist: usize) {
         self.previous_pos = self.pos;
-        repeat!(self.bump_up(); Some(dist))
+        repeat!(self.bump_up(); Some(dist));
     }
 
     /// Moves the cursor down by the specified distance, clamping at the bottom.
@@ -138,7 +167,7 @@ impl Cursor {
     pub fn jump_down(&mut self, dist: usize) {
         self.previous_pos = self.pos;
         self.pos.line = self.line() + dist;
-        repeat!(self.bump_down(); Some(dist))
+        repeat!(self.bump_down(); Some(dist));
     }
 
     /// Updates the location the cursor points at depending on the current active modal state.
@@ -173,6 +202,7 @@ impl Cursor {
 }
 
 /// Specifies at which plane the cursor is currently located.
+#[derive(Clone, Debug)]
 enum CursorPlane {
     Text,
     CommandBar,

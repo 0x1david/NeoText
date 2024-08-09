@@ -21,7 +21,7 @@ impl CopyObject {
     fn replace(&mut self, obj: Self) {
         *self = obj;
     }
-    const fn as_text(&self) -> Option<&String> {
+    pub const fn as_text(&self) -> Option<&String> {
         if let Self::Text(text) = self {
             Some(text)
         } else {
@@ -71,10 +71,10 @@ impl CopyRegister {
     fn unnamed_register_mut(&mut self) -> &mut CopyObject {
         &mut self.numbered_register[0]
     }
-    pub fn get_from_register(&self, named: Option<char>) -> Option<&CopyObject> {
+    pub fn get_from_register(&self, named: Option<char>) -> Result<&CopyObject> {
         named.map_or_else(
-            || Some(self.unnamed_register()),
-            |reg| self.named_registers.get(&reg),
+            || Ok(self.unnamed_register()),
+            |reg| self.named_registers.get(&reg).ok_or(Error::PatternNotFound),
         )
     }
     pub fn push_into_numbered_registers(&mut self, text: impl Into<String>) {
