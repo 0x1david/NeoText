@@ -138,9 +138,6 @@ impl<Buff: TextBuffer> Editor<Buff> {
     }
 
     #[inline]
-    pub(crate) const fn prev_pos(&self) -> LineCol {
-        self.prev_pos
-    }
     const fn last_normal_pos(&self) -> LineCol {
         self.cursor.last_text_mode_pos
     }

@@ -57,8 +57,6 @@ pub struct Cursor {
     pub pos: LineCol,
     pub previous_pos: LineCol,
     pos_initial: LineCol,
-    col_max: usize,
-    line_max: usize,
     plane: CursorPlane,
     pub last_text_mode_pos: LineCol,
 }
@@ -69,8 +67,6 @@ impl Default for Cursor {
             pos: LineCol::default(),
             previous_pos: LineCol::default(),
             pos_initial: LineCol::default(),
-            col_max: 0,
-            line_max: 0,
             plane: CursorPlane::Text,
             last_text_mode_pos: LineCol::default(),
         }
@@ -152,7 +148,7 @@ impl Cursor {
     #[inline]
     pub fn jump_right(&mut self, dist: usize) {
         self.previous_pos = self.pos;
-        self.pos.col = self.col_max.min(self.col() + dist);
+        self.pos.col = dist;
     }
 
     /// Moves the cursor up by the specified distance, clamping at the top.

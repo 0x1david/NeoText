@@ -1,9 +1,8 @@
 // Features to implement:
 //      TEXT EDITING:
-//          Copy && Paste
-//          Visual Mode
 //          Regex Command Processing
 //          Undo and Redo
+//          Terminal Mode
 //
 //          Macros
 //          Marks
@@ -16,6 +15,7 @@
 //          Configuration parsing and configurable controller
 //          LSP Integration
 //          Programmable Extensions
+//          Syntax Highlighting
 //
 //      ADDONS:
 //          Screen Splits
@@ -24,6 +24,7 @@
 //
 // Bugs To Fix:
 //      Jumps out  of bounds crash the program
+//      Constant crashing
 #![allow(dead_code, clippy::cast_possible_wrap)]
 use std::{io::stdout, path::PathBuf};
 
