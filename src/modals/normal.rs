@@ -15,6 +15,7 @@ const SCROLL_JUMP_DISTANCE: usize = 25;
 
 use super::{FindMode, Modal};
 
+#[cfg_attr(feature = "testing", visibility::make(pub))]
 impl<Buff: TextBuffer> Editor<Buff> {
     pub(crate) fn run_normal(
         &mut self,

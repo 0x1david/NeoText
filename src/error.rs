@@ -17,6 +17,9 @@ pub enum Error {
     },
     NowhereToGo,
     ImATeacup,
+    UnexpectedReturn,
+    InvalidUtf8,
+
 
     #[from]
     Io(std::io::Error),

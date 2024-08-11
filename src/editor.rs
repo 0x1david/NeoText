@@ -60,6 +60,7 @@ impl<Buff: TextBuffer> Drop for Editor<Buff> {
     }
 }
 
+#[cfg_attr(feature = "testing", visibility::make(pub))]
 impl<Buff: TextBuffer> Editor<Buff> {
     /// Creates a new instance of `MainEditor`.
     ///
@@ -121,7 +122,6 @@ impl<Buff: TextBuffer> Editor<Buff> {
     /// If the cursor is in an invalid position, applies a cursor movement that results in a valid position within the buffer bounds.
     pub fn force_within_bounds(&mut self) {
         let original_pos = self.cursor.previous_pos;
-        notif_bar!(self.buffer.max_line(););
         if self.pos().line > self.buffer.max_line() {
             self.cursor.pos = original_pos;
             return;
