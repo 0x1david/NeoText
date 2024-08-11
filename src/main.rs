@@ -23,7 +23,6 @@
 //          Different cursors (Visuals)
 //
 // Bugs To Fix:
-//      Jumps out  of bounds crash the program
 //      Constant crashing
 #![allow(dead_code, clippy::cast_possible_wrap)]
 use std::{io::stdout, path::PathBuf};
@@ -49,10 +48,16 @@ mod view_window;
 
 fn main() {
     let _ = execute!(stdout(), EnterAlternateScreen, DisableLineWrap);
-    // let buf = VecBuffer::default();
-    // let mut editor = Editor::new(buf, true);
-    let p = "/home/flxvs/repositories/rust/text-editor/src/buffer.rs".into();
-    let mut editor = new_from_file(p);
+
+    let args: Vec<String> = std::env::args().collect();
+    let mut editor = if args.len() > 1 && (args[1] == "--empty" || args[1] == "-e") {
+        let buf = VecBuffer::default();
+        Editor::new(buf, true)
+    } else {
+        let p = "/home/flxvs/repositories/rust/text-editor/src/buffer.rs".into();
+        new_from_file(p)
+    };
+
     match editor.run() {
         Err(Error::ExitCall) => (),
         Ok(()) => panic!("Editor should never return without an error"),

@@ -536,7 +536,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     pub(crate) fn control_view_window(&mut self) {
         let current_line = self.pos().line;
         let top_line = self.view_window.top.line + WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS;
-        let bot_line = self.view_window.bot.line - WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS;
+        let bot_line = self.view_window.bot.line.saturating_sub(WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS);
 
         // Adjusting by one done to prevent centering on cursor bumps
         let cursor_out_of_bounds = current_line < top_line - 1 || current_line > bot_line + 1;
