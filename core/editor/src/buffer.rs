@@ -337,13 +337,6 @@ impl TextBuffer for VecBuffer {
     /// It searches the remainder of the starting line, then subsequent lines in their entirety.
     /// The search is case-sensitive and returns the position of the first occurrence found.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// let buffer = // ... initialize buffer ...
-    /// let result = buffer.find("example", LineCol{line: 1, col: 5});
-    /// assert_eq!(result, Ok(LineCol{line: 2, col: 10})); // Found on line 2, column 10
-    /// ```
     fn find(&self, query: impl Pattern, at: LineCol) -> Result<LineCol> {
         query
             .find_pattern(&self.get_buffer_window(Some(at), None)?)
@@ -373,14 +366,6 @@ impl TextBuffer for VecBuffer {
     /// then searches previous lines in their entirety from end to start.
     /// The search is case-sensitive and returns the position of the last occurrence found
     /// (i.e., the first occurrence when searching backwards).
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let buffer = // ... initialize buffer ...
-    /// let result = buffer.rfind("example", LineCol{line: 2, col: 15});
-    /// assert_eq!(result, Ok(LineCol{line: 1, col: 5})); // Found on line 1, column 5
-    /// ```
     fn rfind(&self, query: impl Pattern, at: LineCol) -> Result<LineCol> {
         query
             .rfind_pattern(&self.get_buffer_window(None, Some(at))?)
@@ -433,18 +418,6 @@ impl TextBuffer for VecBuffer {
     /// - If the start position exceeds the end position.
     /// - If either the start or end position is beyond the buffer's contents.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// let buffer = // ... initialize buffer ...
-    /// let from = LineCol{line: 1, col: 5};
-    /// let to = LineCol{line: 2, col: 10};
-    /// match buffer.get_text(&from, &to) {
-    ///     Ok(text) => println!("Retrieved text: {}", text),
-    ///     Err(BufferError::InvalidRange) => println!("Invalid range specified"),
-    ///     Err(_) => println!("An error occurred"),
-    /// }
-    /// ```
     fn get_text(&self, from: LineCol, to: LineCol) -> Result<String> {
         let buffer = self.get_buffer();
         let start_exceeds_end = from.line > to.line || (from.line == to.line && from.col > to.col);
@@ -495,16 +468,6 @@ impl TextBuffer for VecBuffer {
     /// The caller must ensure that `text` is not empty. If empty text replacement is needed,
     /// use the `delete` method instead.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// let mut buffer = // ... initialize buffer ...
-    /// let from = LineCol{line: 1, col: 5};
-    /// let to = LineCol{line: 2, col: 10};
-    /// let new_text = "replacement text";
-    /// buffer.replace(&from, &to, new_text).expect("Replace operation failed");
-    /// ```
-    ///
     /// # Errors
     ///
     /// Returns `BufferError::InvalidInput` if `text` is empty.
@@ -553,14 +516,6 @@ impl TextBuffer for VecBuffer {
     /// If `newline` is false:
     ///   - The text is inserted at the specified position within the existing line.
     ///   - If `text` contains multiple lines, it splits the current line and inserts the new lines.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let mut buffer = // ... initialize buffer ...
-    /// let result = buffer.insert(LineCol { line: 1, col: 5 }, "Hello, world!".to_string(), false);
-    /// assert!(result.is_ok());
-    /// ```
     ///
     /// # Note
     ///
@@ -634,19 +589,6 @@ impl TextBuffer for VecBuffer {
     /// - If `from` position comes after `to` position.
     /// - If `from` and `to` are the same position.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// let mut buffer = // ... initialize buffer ...
-    /// let from = LineCol { line: 1, col: 5 };
-    /// let to = LineCol { line: 2, col: 10 };
-    /// match buffer.delete(&from, &to) {
-    ///     Ok(_) => println!("Text deleted successfully"),
-    ///     Err(BufferError::InvalidRange) => println!("Invalid range specified"),
-    ///     Err(_) => println!("An error occurred"),
-    /// }
-    /// ```
-    ///
     /// # Note
     ///
     /// This function modifies the buffer's content. After calling this function,
@@ -711,12 +653,12 @@ impl TextBuffer for VecBuffer {
             return Err(Error::InvalidPosition);
         }
         if at.col == 0 {
-            if at.line == 0 {
+            if buf[at.line].is_empty() {
                 return Err(Error::ImATeacup);
             }
 
             let line_content = buf.remove(at.line);
-            at.line -= 1;
+            at.line = at.line.saturating_sub(1);
             at.col = buf[at.line].len();
             buf[at.line].push_str(&line_content);
         } else {

@@ -2,53 +2,6 @@ use std::{cmp::Ordering, fmt::Display};
 
 use crate::{modals::Modal, repeat};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub struct LineCol {
-    pub line: usize,
-    pub col: usize,
-}
-
-impl Display for LineCol {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.line, self.col)
-    }
-}
-
-impl PartialOrd for LineCol {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match self.line.cmp(&other.line) {
-            Ordering::Equal => self.col.cmp(&other.col).into(),
-            otherwise => Some(otherwise),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Selection {
-    pub start: LineCol,
-    pub end: LineCol,
-}
-
-impl Selection {
-    pub const fn line_is_in_selection(&self, line: usize) -> bool {
-        self.start.line < line && self.end.line > line
-    }
-    pub fn normalized(mut self) -> Self {
-        if self.end < self.start {
-            std::mem::swap(&mut self.end, &mut self.start);
-        };
-        self
-    }
-}
-
-impl From<&Cursor> for Selection {
-    fn from(value: &Cursor) -> Self {
-        Self {
-            start: value.last_text_mode_pos,
-            end: value.pos,
-        }
-    }
-}
 
 /// The overarching cursor struct
 #[derive(Clone, Debug)]

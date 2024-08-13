@@ -1,4 +1,4 @@
 mod modal;
-mod normal;
+pub(crate) mod normal;
 
 pub use modal::{FindMode, Modal};

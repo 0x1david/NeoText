@@ -1,14 +1,6 @@
-[package]
-name = "text-editor"
-version = "0.1.0"
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-anyhow = "1.0.86"
-crossterm = "0.27.0"
-derive_more = "0.99.18"
-visibility = "0.1.0"
-[features]
-testing = []
+[workspace]
+members = [
+    "core/terminal-port",
+    "core/editor",
+    "core/lsp"
+]

@@ -6,20 +6,20 @@ use crate::{
     bars::{draw_bar, get_info_bar_content, get_notif_bar_content, INFO_BAR, NOTIFICATION_BAR},
     buffer::TextBuffer,
     cursor::LineCol,
-    editor::Editor,
+    editor::EditorInner,
     error::Error,
     notif_bar, repeat, Result,
 };
 
-const SCROLL_JUMP_DISTANCE: usize = 25;
+pub(crate) const SCROLL_JUMP_DISTANCE: usize = 25;
 
 use super::{FindMode, Modal};
 
 #[cfg_attr(feature = "testing", visibility::make(pub))]
-impl<Buff: TextBuffer> Editor<Buff> {
+impl<Buff: TextBuffer> EditorInner<Buff> {
     pub(crate) fn run_normal(
         &mut self,
-        carry_over: Option<i32>,
+        carry_over: Option<u32>,
         prev_char: Option<char>,
     ) -> Result<()> {
         self.draw_lines()?;
@@ -57,7 +57,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     pub fn handle_combination_input(
         &mut self,
         ch: char,
-        carry_over: Option<i32>,
+        carry_over: Option<u32>,
         prev: char,
     ) -> Result<()> {
         match (prev, ch) {
@@ -77,7 +77,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         }
         Ok(())
     }
-    fn find_next_char(&mut self, pat: char, carry_over: Option<i32>) -> Result<()> {
+    pub(crate) fn find_next_char(&mut self, pat: char, carry_over: Option<u32>) -> Result<()> {
         repeat! {{
             let mut pos = self.pos();
             if self.buffer.max_col(pos) > pos.col + 1 {
@@ -89,13 +89,13 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
 
-    fn find_previous_char(&mut self, pat: char, carry_over: Option<i32>) -> Result<()> {
+    pub(crate) fn find_previous_char(&mut self, pat: char, carry_over: Option<u32>) -> Result<()> {
         repeat! {{
             self.go(self.buffer.rfind(pat, self.pos())?);
         }; carry_over}
         Ok(())
     }
-    fn move_to_char(&mut self, pat: char) -> Result<()> {
+    pub(crate) fn move_to_char(&mut self, pat: char) -> Result<()> {
         let dest = self.buffer.find(pat, self.pos())?;
         self.go(dest);
         let mut dest = self.pos();
@@ -104,7 +104,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
 
-    fn move_back_to_char(&mut self, pat: char) -> Result<()> {
+    pub(crate) fn move_back_to_char(&mut self, pat: char) -> Result<()> {
         let dest = self.buffer.rfind(pat, self.pos())?;
         self.go(dest);
         let mut dest = self.pos();
@@ -113,7 +113,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
     /// Unnecessary until redo and scrolling
-    pub fn handle_modifiers(&mut self, ch: char, carry_over: Option<i32>, modifiers: KeyModifiers) {
+    pub fn handle_modifiers(&mut self, ch: char, carry_over: Option<u32>, modifiers: KeyModifiers) {
         if modifiers.contains(KeyModifiers::CONTROL) {
             match ch {
                 'd' => {
@@ -134,24 +134,28 @@ impl<Buff: TextBuffer> Editor<Buff> {
             }
         }
     }
-    pub fn handle_char_input(&mut self, ch: char, carry_over: Option<i32>) -> Result<()> {
+
+    pub fn yank(&mut self) -> Result<()> {
+        let sel = self
+            .buffer
+            .get_buffer_window(Some(self.cursor.last_text_mode_pos), Some(self.pos()))?;
+        let sel = if self.mode.is_visual_line() {
+            format!("\n{}", sel.join("\n"))
+        } else {
+            sel.join("\n").to_string()
+        };
+        self.copy_register.yank(sel, None)?;
+        self.set_mode(Modal::Normal);
+        Ok(())
+    }
+    pub fn handle_char_input(&mut self, ch: char, carry_over: Option<u32>) -> Result<()> {
         match ch {
             combination @ ('r' | 't' | 'd' | 'z' | 'f' | 'g' | 'F' | 'T') => {
                 self.run_normal(carry_over, Some(combination))?;
             }
             'y' => {
                 if self.mode.is_any_visual() {
-                    let sel = self.buffer.get_buffer_window(
-                        Some(self.cursor.last_text_mode_pos),
-                        Some(self.pos()),
-                    )?;
-                    let sel = if self.mode.is_visual_line() {
-                        format!("\n{}", sel.join("\n"))
-                    } else {
-                        sel.join("\n").to_string()
-                    };
-                    self.copy_register.yank(sel, None)?;
-                    self.set_mode(Modal::Normal)
+                    self.yank()?
                 }
             }
             'i' => {
@@ -189,14 +193,20 @@ impl<Buff: TextBuffer> Editor<Buff> {
         }
         Ok(())
     }
-    fn paste_register_content(&mut self, register: Option<char>, newline: bool) -> Result<()> {
+    pub(crate) fn paste_register_content(
+        &mut self,
+        register: Option<char>,
+        newline: bool,
+    ) -> Result<()> {
+        let register = register.filter(|&reg| reg != '0');
         let register_content = self
             .copy_register
             .get_from_register(register)?
             .as_text()
             .ok_or(Error::UnexpectedRegisterData)?;
+
         let mut pos = self.pos();
-        pos.line -= 1;
+        pos.line = pos.line.saturating_sub(1);
         let dest = self
             .buffer
             .insert_text(self.pos(), register_content, newline);
@@ -211,28 +221,28 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
 
-    fn replace_under_cursor(&mut self, ch: char) -> Result<()> {
+    pub(crate) fn replace_under_cursor(&mut self, ch: char) -> Result<()> {
         self.delete_under_cursor()?;
         self.push(ch);
         Ok(())
     }
-    fn delete_under_cursor(&mut self) -> Result<()> {
+    pub(crate) fn delete_under_cursor(&mut self) -> Result<()> {
         let mut delete_dest = self.pos();
         delete_dest.col += 1;
         let dest = self.buffer.delete(delete_dest)?;
         self.go(dest);
         Ok(())
     }
-    fn delete_before_cursor(&mut self) -> Result<()> {
+    pub(crate) fn delete_before_cursor(&mut self) -> Result<()> {
         let dest = self.buffer.delete(self.pos())?;
         self.go(dest);
         Ok(())
     }
-    fn move_to_end_of_line_and_insert(&mut self) {
+    pub(crate) fn move_to_end_of_line_and_insert(&mut self) {
         self.move_to_end_of_line();
         self.set_mode(Modal::Insert);
     }
-    fn move_to_lowest_line(&mut self) {
+    pub(crate) fn move_to_lowest_line(&mut self) {
         let mut pos = self.pos();
         let dest = self.buffer.max_line();
         pos.line = dest;
@@ -249,14 +259,14 @@ impl<Buff: TextBuffer> Editor<Buff> {
         pos.col = 0;
         self.go(pos);
     }
-    fn move_to_first_non_whitespace_col(&mut self) -> Result<()> {
+    pub(crate) fn move_to_first_non_whitespace_col(&mut self) -> Result<()> {
         let mut pos = self.pos();
         pos.col = 0;
         let dest = self.buffer.find(|ch| !char::is_whitespace(ch), pos)?;
         self.go(dest);
         Ok(())
     }
-    fn move_to_next_word_after_whitespace(&mut self) -> Result<()> {
+    pub(crate) fn move_to_next_word_after_whitespace(&mut self) -> Result<()> {
         let mut pos = self.pos();
         if self.buffer.max_col(pos) > pos.col {
             pos.col += 1;
@@ -268,7 +278,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
 
-    fn move_to_next_non_alphanumeric(&mut self) -> Result<()> {
+    pub(crate) fn move_to_next_non_alphanumeric(&mut self) -> Result<()> {
         let mut pos = self.pos();
         if self.buffer.max_col(pos) > pos.col {
             pos.col += 1;
@@ -279,15 +289,20 @@ impl<Buff: TextBuffer> Editor<Buff> {
         self.go(dest);
         Ok(())
     }
-    fn handle_number_input(&mut self, num: char, carry_over: Option<i32>) {
-        let digit = i32::from(num as u8 - b'0');
+    pub(crate) fn handle_number_input(&mut self, num: char, carry_over: Option<u32>) {
+        let digit = u32::from(num as u8 - b'0');
         let new_carry_over = carry_over.map_or(digit, |current_carry_over| {
             concatenate_ints(current_carry_over, digit)
         });
         let _ = self.run_normal(Some(new_carry_over), None);
     }
+    pub(crate) fn get_under_cursor(&self) -> Option<char> {
+        self.buffer.get_normal_text()[self.cursor.line()]
+            .chars()
+            .nth(self.cursor.col().saturating_sub(1))
+    }
 }
 
-pub fn concatenate_ints(a: i32, b: i32) -> i32 {
+pub(crate) fn concatenate_ints(a: u32, b: u32) -> u32 {
     format!("{a}{b}").parse().unwrap_or(a)
 }

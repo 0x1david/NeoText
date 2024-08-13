@@ -31,7 +31,7 @@ const MAX_HISTORY: usize = 50;
 const WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS: usize = 8;
 
 /// The main editor is used as the main API for all commands
-pub struct Editor<Buff: TextBuffer> {
+pub struct EditorInner<Buff: TextBuffer> {
     /// In the first implementation I will start with Vec, for simplicity, fairly early to the dev
     /// process a better data structure will have to be found and vec replaced;
     pub(crate) cursor: Cursor,
@@ -47,9 +47,10 @@ pub struct Editor<Buff: TextBuffer> {
     // target file
     pub(crate) is_initial_launch: bool,
     pub(crate) copy_register: CopyRegister,
+    pub(crate) end_of_selection: LineCol,
 }
 
-impl<Buff: TextBuffer> Drop for Editor<Buff> {
+impl<Buff: TextBuffer> Drop for EditorInner<Buff> {
     fn drop(&mut self) {
         let _ = terminal::disable_raw_mode();
         let _ = execute!(
@@ -61,7 +62,7 @@ impl<Buff: TextBuffer> Drop for Editor<Buff> {
 }
 
 #[cfg_attr(feature = "testing", visibility::make(pub))]
-impl<Buff: TextBuffer> Editor<Buff> {
+impl<Buff: TextBuffer> EditorInner<Buff> {
     /// Creates a new instance of `MainEditor`.
     ///
     /// # Arguments
@@ -69,7 +70,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     ///
     /// # Returns
     /// A new `MainEditor` instance initialized with the given buffer and default cursor position.
-    pub fn new(buffer: Buff, launch_without_target: bool) -> Self {
+    pub(crate) fn new(buffer: Buff, launch_without_target: bool) -> Self {
         Self {
             buffer,
             prev_pos: LineCol { line: 0, col: 0 },
@@ -82,17 +83,18 @@ impl<Buff: TextBuffer> Editor<Buff> {
             view_window: ViewWindow::default(),
             is_initial_launch: launch_without_target,
             copy_register: CopyRegister::default(),
+            end_of_selection: LineCol::default(),
         }
     }
 
     /// Stores a command in the search history
-    fn add_to_search_history(&mut self, command: impl Into<String>) {
+    pub(crate) fn add_to_search_history(&mut self, command: impl Into<String>) {
         self.forwards_history.push_front(command.into());
         if self.forwards_history.len() > MAX_HISTORY {
             self.forwards_history.pop_back();
         }
     }
-    fn get_from_search_history(&self, nth: u8, find_mode: FindMode) -> Option<String> {
+    pub(crate) fn get_from_search_history(&self, nth: u8, find_mode: FindMode) -> Option<String> {
         if nth == 0 {
             return Some(String::new());
         }
@@ -101,26 +103,9 @@ impl<Buff: TextBuffer> Editor<Buff> {
             FindMode::Backwards => self.backwards_history.get((nth - 1) as usize).cloned(),
         }
     }
-    fn replay_from_search_history(&self) -> Result<()> {
-        let pat = self
-            .forwards_history
-            .front()
-            .ok_or(Error::NoCommandAvailable)?;
-        let (flag, pat) = pat.split_at(1);
-        match flag {
-            "/" => self.buffer.find(pat, self.last_normal_pos())?,
-            "?" => self.buffer.rfind(pat, self.last_normal_pos())?,
-            otherwise => Err(Error::ProgrammingBug {
-                descr: format!(
-                    "Only commands starting with `?` or `/` should be found. Instead got ``{otherwise}"
-                ),
-            })?,
-        };
-        Ok(())
-    }
 
     /// If the cursor is in an invalid position, applies a cursor movement that results in a valid position within the buffer bounds.
-    pub fn force_within_bounds(&mut self) {
+    pub(crate) fn force_within_bounds(&mut self) {
         let original_pos = self.cursor.previous_pos;
         if self.pos().line > self.buffer.max_line() {
             self.cursor.pos = original_pos;
@@ -131,6 +116,11 @@ impl<Buff: TextBuffer> Editor<Buff> {
         if new_pos.col > max_col {
             self.cursor.set_col(max_col);
         }
+    }
+
+    pub(crate) fn get_selected(&self) -> Result<Vec<String>> {
+        self.buffer
+            .get_buffer_window(Some(self.pos()), Some(self.end_of_selection))
     }
 
     #[inline]
@@ -152,7 +142,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     pub(crate) fn go(&mut self, to: LineCol) {
         self.cursor.go(to);
     }
-    fn delete(&mut self) {
+    pub(crate) fn delete(&mut self) {
         match self.buffer.delete(self.pos()) {
             Ok(new_pos) => self.go(new_pos),
             Err(Error::InvalidPosition) => panic!("Cursor found in a position it should never appear in: ({}), please contact the developers.", self.pos()),
@@ -160,7 +150,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             Err(_) => panic!("UnexpectedError, please contact the developers.")
         }
     }
-    pub fn push(&mut self, c: char) {
+    pub(crate) fn push(&mut self, c: char) {
         match self.buffer.insert(self.pos(), c) {
             Ok(new_pos) => self.go(new_pos),
             Err(Error::InvalidPosition) => panic!("Cursor found in a position it should never appear in: ({}), please contact the developers.", self.pos()),
@@ -168,7 +158,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             Err(_) => panic!("UnexpectedError, please contact the developers.")
         }
     }
-    pub fn newline(&mut self) {
+    pub(crate) fn newline(&mut self) {
         self.cursor.pos = self.buffer.insert_newline(self.pos());
     }
 
@@ -186,7 +176,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     /// This function can return an error if:
     /// - Terminal operations fail (e.g., enabling raw mode, reading events)
     /// - Drawing operations fail
-    pub fn run(&mut self) -> Result<()> {
+    pub(crate) fn run(&mut self) -> Result<()> {
         terminal::enable_raw_mode()?;
 
         loop {
@@ -207,7 +197,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         }
     }
 
-    fn run_find(&mut self, find_mode: FindMode) -> Result<()> {
+    pub(crate) fn run_find(&mut self, find_mode: FindMode) -> Result<()> {
         if self.buffer.is_command_empty() {
             match find_mode {
                 FindMode::Forwards => self.push('/'),
@@ -240,7 +230,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
 
-    fn run_command_mode(&mut self) -> Result<()> {
+    pub(crate) fn run_command_mode(&mut self) -> Result<()> {
         if self.buffer.is_command_empty() {
             self.push(':');
         }
@@ -255,7 +245,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
 
-    fn run_insert(&mut self) -> Result<()> {
+    pub(crate) fn run_insert(&mut self) -> Result<()> {
         self.draw_lines()?;
         draw_bar(&INFO_BAR, |term_width, _| {
             get_info_bar_content(term_width, &self.mode, self.pos())
@@ -285,7 +275,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     ///
     /// This function determines whether there are more historical entries
     /// available in the direction the pointer is moving, based on the current mode.
-    fn can_move_history_pointer(&self) -> bool {
+    pub(crate) fn can_move_history_pointer(&self) -> bool {
         let history_len = match &self.mode {
             Modal::Command => self.command_history.len(),
             Modal::Find(FindMode::Forwards) => self.forwards_history.len(),
@@ -299,7 +289,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         // To accomodate having an empty string always be the 0th element
         history_len >= self.history_pointer as usize
     }
-    fn navigate_history_backwards(&mut self) -> Result<()> {
+    pub(crate) fn navigate_history_backwards(&mut self) -> Result<()> {
         self.history_pointer += 1;
         if self.can_move_history_pointer() {
             match &self.mode {
@@ -320,7 +310,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
 
-    fn navigate_history_forwards(&mut self) -> Result<()> {
+    pub(crate) fn navigate_history_forwards(&mut self) -> Result<()> {
         if self.history_pointer > 0 {
             self.history_pointer -= 1;
             match &self.mode {
@@ -413,7 +403,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
 
         Ok(())
     }
-    fn draw_line(&self, line: impl AsRef<str>, absolute_ln: usize) -> Result<()> {
+    pub(crate) fn draw_line(&self, line: impl AsRef<str>, absolute_ln: usize) -> Result<()> {
         let line = line.as_ref();
         let selection = Selection::from(&self.cursor).normalized();
         let mut stdout = stdout();
@@ -530,19 +520,23 @@ impl<Buff: TextBuffer> Editor<Buff> {
         }
     }
 
-
     /// Makes sure the cursor is in bounds of the view window, if it isnt' follow the cursor with
     /// the bounds
     pub(crate) fn control_view_window(&mut self) {
         let current_line = self.pos().line;
         let top_line = self.view_window.top.line + WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS;
-        let bot_line = self.view_window.bot.line.saturating_sub(WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS);
+        let bot_line = self
+            .view_window
+            .bot
+            .line
+            .saturating_sub(WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS);
 
         // Adjusting by one done to prevent centering on cursor bumps
         let cursor_out_of_bounds = current_line < top_line - 1 || current_line > bot_line + 1;
 
         let cursor_less_than_proximity_from_top = current_line < top_line;
-        let main_cursor_more_than_proximity = current_line > WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS;
+        let main_cursor_more_than_proximity =
+            current_line > WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS;
         let cursor_less_than_proximity_from_bot = current_line > bot_line;
 
         if cursor_out_of_bounds {
@@ -563,7 +557,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     ///
     /// # Errors
     /// This function can return an error if the terminal cursor movement operation fails.
-    pub fn move_cursor(&self) {
+    pub(crate) fn move_cursor(&self) {
         let cursor = self.view_window.calculate_view_cursor(self.pos());
         #[allow(clippy::cast_possible_truncation)]
         let _ = execute!(

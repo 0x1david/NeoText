@@ -74,7 +74,7 @@ impl CopyRegister {
     pub fn get_from_register(&self, named: Option<char>) -> Result<&CopyObject> {
         named.map_or_else(
             || Ok(self.unnamed_register()),
-            |reg| self.named_registers.get(&reg).ok_or(Error::PatternNotFound),
+            |reg| self.named_registers.get(&reg).ok_or(Error::NoRegisterContent),
         )
     }
     pub fn push_into_numbered_registers(&mut self, text: impl Into<String>) {

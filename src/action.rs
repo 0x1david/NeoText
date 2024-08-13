@@ -1,20 +1,72 @@
-// I have functions find and rfind
-// I wan't them to be able to take either:
-// STRING_TYPES -> Which are the pattern that we are looking for in the return type.
-// CHAR -> Return the first occurence of the character in the searched file.
-// CLOSURE -> e.g FIND NEXT SPACE AND AFTER THAT FIND FIRST NONSPACE AND RETURN THE LOCATION OF IT
-// || {
-//      let pos = vec.find_space();
-//      let nonspace = vec.find_non_space();
-//      return LineCol nonspace;
-// }
-//
-// So essentially what I need is for each type to implement a function that takes a &[impl AsRef<str>]
-// and returns a LineCol
-
 use std::borrow::Cow;
+use std::fmt::Display;
 
-use crate::cursor::LineCol;
+pub enum Action {
+    Quit,
+    Save,
+
+    // Cursor Movement
+    BumpUp,
+    BumpDown,
+    BumpLeft,
+    BumpRight,
+    JumpUp,
+    JumpDown,
+    SetCursor(LineCol),
+    JumpLetter{char},
+    ReverseJumpLetter(char),
+    JumpToNextWord,
+    JumpToNextSymbol,
+    ReverseJumpToNextWord,
+    ReverseJumpToNextSymbol,
+    JumpSOL
+    JumpEOL,
+    JumpSOF,
+    JumpEOF,
+
+    // Mode Changes
+    ChangeMode(Modal),
+    InsertModeEOL,
+
+    // Text Search
+    Find(Box<dyn Pattern>),
+    ReverseFind(Box<dyn Pattern>),
+    FindChar(char),
+    ReverseFindChar(char),
+
+    // Insertions
+
+    // Text Manipulation
+    Replace(char),
+    InsertCharAtCursor(char),
+    InsertNewline,
+    InsertBelow,
+    InsertTab,
+    DeleteBefore,
+    DeleteUnder,
+
+    // Clipboard Operations
+    Yank,
+    Paste(char),
+    PasteNewline(char),
+    PasteAbove(char),
+
+    // History Operations
+    FetchFromHistory(u8),
+
+    // Command Execution
+    ExecuteCommand(Command),
+
+    // Undo/Redo
+    Undo(u8),
+    Redo,
+
+    // Misc
+    GetUnderCursor,
+    OpenFile,
+
+}
+
 
 pub trait Pattern {
     /// The caller has two main responsibilities:
@@ -24,29 +76,29 @@ pub trait Pattern {
     ///        first line of the search (if returned linecol.line equals the cursor position)
     ///
     /// Thus find and rfind will require to be split at the cursor
-    fn find_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol>;
-    fn rfind_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol>;
+    fn find_pattern(&self, haystack: &[String]) -> Option<LineCol>;
+    fn rfind_pattern(&self, haystack: &[String]) -> Option<LineCol>;
 }
 
 impl Pattern for &str {
-    fn find_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+    fn find_pattern(&self, haystack: &[String]) -> Option<LineCol> {
         haystack
             .iter()
             .enumerate()
             .find_map(|(line_num, line_content)| {
-                line_content.as_ref().find(self).map(|col| LineCol {
+                line_content.find(self).map(|col| LineCol {
                     line: line_num,
                     col,
                 })
             })
     }
-    fn rfind_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+    fn rfind_pattern(&self, haystack: &[String]) -> Option<LineCol> {
         haystack
             .iter()
             .enumerate()
             .rev()
             .find_map(|(line_num, line_content)| {
-                line_content.as_ref().rfind(self).map(|col| LineCol {
+                line_content.rfind(self).map(|col| LineCol {
                     line: line_num,
                     col,
                 })
@@ -58,7 +110,7 @@ impl Pattern for &str {
 // where
 //     F: Fn(&str) -> Option<usize>,
 // {
-//     fn find_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+//     fn find_pattern(&self, haystack: &[String]) -> Option<LineCol> {
 //         haystack
 //             .iter()
 //             .enumerate()
@@ -72,42 +124,42 @@ impl Pattern for &str {
 // }
 
 impl Pattern for String {
-    fn find_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+    fn find_pattern(&self, haystack: &[String]) -> Option<LineCol> {
         self.as_str().find_pattern(haystack)
     }
-    fn rfind_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+    fn rfind_pattern(&self, haystack: &[String]) -> Option<LineCol> {
         self.as_str().rfind_pattern(haystack)
     }
 }
 
 impl Pattern for Cow<'_, str> {
-    fn find_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+    fn find_pattern(&self, haystack: &[String]) -> Option<LineCol> {
         self.as_ref().find_pattern(haystack)
     }
-    fn rfind_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+    fn rfind_pattern(&self, haystack: &[String]) -> Option<LineCol> {
         self.as_ref().rfind_pattern(haystack)
     }
 }
 
 impl Pattern for char {
-    fn find_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+    fn find_pattern(&self, haystack: &[String]) -> Option<LineCol> {
         haystack
             .iter()
             .enumerate()
             .find_map(|(line_num, line_content)| {
-                line_content.as_ref().find(*self).map(|col| LineCol {
+                line_content.find(*self).map(|col| LineCol {
                     line: line_num,
                     col,
                 })
             })
     }
-    fn rfind_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+    fn rfind_pattern(&self, haystack: &[String]) -> Option<LineCol> {
         haystack
             .iter()
             .enumerate()
             .rev()
             .find_map(|(line_num, line_content)| {
-                line_content.as_ref().rfind(*self).map(|col| LineCol {
+                line_content.rfind(*self).map(|col| LineCol {
                     line: line_num,
                     col,
                 })
@@ -119,37 +171,143 @@ impl<F> Pattern for F
 where
     F: Fn(char) -> bool,
 {
-    fn find_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+    fn find_pattern(&self, haystack: &[String]) -> Option<LineCol> {
         haystack
             .iter()
             .enumerate()
             .find_map(|(line_num, line_content)| {
-                line_content
-                    .as_ref()
-                    .chars()
-                    .position(self)
-                    .map(|col| LineCol {
-                        line: line_num,
-                        col,
-                    })
+                line_content.chars().position(self).map(|col| LineCol {
+                    line: line_num,
+                    col,
+                })
             })
     }
-    fn rfind_pattern(&self, haystack: &[impl AsRef<str>]) -> Option<LineCol> {
+    fn rfind_pattern(&self, haystack: &[String]) -> Option<LineCol> {
         haystack
             .iter()
             .enumerate()
             .rev()
             .find_map(|(line_num, line_content)| {
                 line_content
-                    .as_ref()
                     .chars()
                     .rev()
                     .position(self)
                     .map(|rcol| LineCol {
                         line: line_num,
-                        col: line_content.as_ref().len() - rcol,
+                        col: line_content.len() - rcol,
                     })
             })
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct LineCol {
+    pub line: usize,
+    pub col: usize,
+}
+
+impl Display for LineCol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.line, self.col)
+    }
+}
+
+impl PartialOrd for LineCol {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.line.cmp(&other.line) {
+            Ordering::Equal => self.col.cmp(&other.col).into(),
+            otherwise => Some(otherwise),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Selection {
+    pub start: LineCol,
+    pub end: LineCol,
+}
+
+impl Selection {
+    pub const fn line_is_in_selection(&self, line: usize) -> bool {
+        self.start.line < line && self.end.line > line
+    }
+    pub fn normalized(mut self) -> Self {
+        if self.end < self.start {
+            std::mem::swap(&mut self.end, &mut self.start);
+        };
+        self
+    }
+}
+
+impl From<&Cursor> for Selection {
+    fn from(value: &Cursor) -> Self {
+        Self {
+            start: value.last_text_mode_pos,
+            end: value.pos,
+        }
+    }
+}
+
+
+/// Contains the main modal variants of the editor.
+#[derive(Default, Debug, PartialEq, Eq)]
+pub enum Modal {
+    #[default]
+    Normal,
+    Insert,
+    Visual,
+    VisualLine,
+    Find(FindMode),
+    Command,
+}
+
+#[derive(Default, Debug, PartialEq, Eq, Clone, Copy)]
+pub enum FindMode {
+    #[default]
+    Forwards,
+    Backwards,
+}
+
+impl Modal {
+    pub const fn is_normal(&self) -> bool {
+        matches!(self, Self::Normal)
+    }
+
+    pub const fn is_insert(&self) -> bool {
+        matches!(self, Self::Insert)
+    }
+
+    pub const fn is_visual(&self) -> bool {
+        matches!(self, Self::Visual)
+    }
+
+    pub const fn is_visual_line(&self) -> bool {
+        matches!(self, Self::VisualLine)
+    }
+    pub const fn is_any_visual(&self) -> bool {
+        matches!(self, Self::VisualLine) || matches!(self, Self::Visual)
+    }
+
+    pub const fn is_find(&self) -> bool {
+        matches!(self, Self::Find(_))
+    }
+
+    pub const fn is_command(&self) -> bool {
+        matches!(self, Self::Command)
+    }
+}
+
+impl Display for Modal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let disp = match &self {
+            Self::Find(_) => "FIND",
+            Self::Normal => "NORMAL",
+            Self::Command => "COMMAND",
+            Self::Insert => "INSERT",
+            Self::Visual => "VISUAL",
+            Self::VisualLine => "VISUAL LINE",
+        };
+        write!(f, "{disp}")
     }
 }
 #[cfg(test)]

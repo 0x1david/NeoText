@@ -62,14 +62,6 @@ pub fn get_debug_messages() -> &'static Mutex<VecDeque<String>> {
 /// - Maintains a queue of the last 10 debug messages
 /// - Behavior changes based on the presence or absence of a trailing semicolon
 ///
-/// # Usage
-/// ```
-/// let x = notif_bar!(5 + 3);  // Logs and returns 8
-/// notif_bar!(5 + 3;)  // Logs without returning
-/// let (a, b) = notif_bar!(1, "two");  // Logs and returns (1, "two")
-/// notif_bar!(1, "two";)  // Logs multiple values without returning
-/// ```
-///
 /// # Notes
 /// - The expression(s) must implement the `Debug` trait for proper formatting
 /// - If the debug message queue exceeds 10 messages, the oldest message is removed

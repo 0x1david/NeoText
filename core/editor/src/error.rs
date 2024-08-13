@@ -4,7 +4,10 @@ pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Debug, From)]
 pub enum Error {
+    NoHistoryContent,
+    NoRegisterContent,
     InvalidPosition,
+    InvalidMode,
     ExitCall,
     InvalidRange,
     InvalidLineNumber,
@@ -19,7 +22,6 @@ pub enum Error {
     ImATeacup,
     UnexpectedReturn,
     InvalidUtf8,
-
 
     #[from]
     Io(std::io::Error),
