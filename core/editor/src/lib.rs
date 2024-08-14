@@ -17,12 +17,11 @@ pub(crate) mod view_window;
 #[macro_use]
 pub mod bars;
 
-use cursor::LineCol;
 use editor::EditorInner;
 pub use error::{Error, Result};
 use modals::normal::SCROLL_JUMP_DISTANCE;
 pub use modals::Modal;
-use searcher::Pattern;
+
 
 /// Initializes the terminal for the editor.
 pub fn initialize_terminal() -> std::io::Result<()> {

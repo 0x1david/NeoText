@@ -5,7 +5,7 @@ use crate::bars::{
 };
 use crate::buffer::TextBuffer;
 use crate::copy_register::CopyRegister;
-use crate::cursor::{Cursor, LineCol, Selection};
+use crate::cursor::Cursor;
 use crate::modals::{FindMode, Modal};
 use crate::notif_bar;
 use crate::utils::draw_ascii_art;

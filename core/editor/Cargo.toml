@@ -8,5 +8,7 @@ anyhow = "1.0.86"
 crossterm = "0.27.0"
 derive_more = "0.99.18"
 visibility = "0.1.0"
+neotext = { path = "../.." }
 [features]
 testing = []
+

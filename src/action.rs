@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::fmt::Display;
 
 pub enum Action {
@@ -13,13 +14,13 @@ pub enum Action {
     JumpUp,
     JumpDown,
     SetCursor(LineCol),
-    JumpLetter{char},
+    JumpLetter(char),
     ReverseJumpLetter(char),
     JumpToNextWord,
     JumpToNextSymbol,
     ReverseJumpToNextWord,
     ReverseJumpToNextSymbol,
-    JumpSOL
+    JumpSOL,
     JumpEOL,
     JumpSOF,
     JumpEOF,
@@ -66,6 +67,8 @@ pub enum Action {
     OpenFile,
 
 }
+
+struct Command{}
 
 
 pub trait Pattern {
@@ -239,14 +242,6 @@ impl Selection {
     }
 }
 
-impl From<&Cursor> for Selection {
-    fn from(value: &Cursor) -> Self {
-        Self {
-            start: value.last_text_mode_pos,
-            end: value.pos,
-        }
-    }
-}
 
 
 /// Contains the main modal variants of the editor.
