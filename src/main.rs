@@ -41,6 +41,7 @@ mod buffer;
 mod copy_register;
 mod cursor;
 mod editor;
+mod highlighter;
 mod modals;
 mod searcher;
 mod utils;
