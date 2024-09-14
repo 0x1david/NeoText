@@ -149,7 +149,8 @@ impl<Buff: TextBuffer> Editor<Buff> {
                     } else {
                         sel.join("\n").to_string()
                     };
-                    self.copy_register.yank(sel, None)?;
+                    let chars: Vec<char> = sel.chars().collect();
+                    self.copy_register.yank(chars, None)?;
                     self.set_mode(Modal::Normal)
                 }
             }
@@ -189,16 +190,12 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
     fn paste_register_content(&mut self, register: Option<char>, newline: bool) -> Result<()> {
-        let register_content = self
-            .copy_register
-            .get_from_register(register)?
-            .as_text()
-            .ok_or(Error::UnexpectedRegisterData)?;
+        let register_content = self.copy_register.get_from_register(register)?;
         let mut pos = self.pos();
         pos.line -= 1;
-        let dest = self
-            .buffer
-            .insert_text(self.pos(), register_content, newline);
+        let dest =
+            self.buffer
+                .insert_text(self.pos(), String::from_iter(register_content), newline);
         let dest = match dest {
             Err(Error::InvalidInput) => {
                 notif_bar!("Register empty.");
