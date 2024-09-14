@@ -1,4 +1,8 @@
-use std::{cmp::Ordering, fmt::Display};
+use std::{
+    cmp::Ordering,
+    fmt::Display,
+    ops::{Add, Sub},
+};
 
 use crate::{modals::Modal, repeat};
 
@@ -6,6 +10,26 @@ use crate::{modals::Modal, repeat};
 pub struct LineCol {
     pub line: usize,
     pub col: usize,
+}
+
+impl Sub for LineCol {
+    type Output = LineCol;
+    fn sub(self, rhs: Self) -> Self::Output {
+        LineCol {
+            line: self.line.saturating_sub(rhs.line),
+            col: self.col.saturating_sub(rhs.col),
+        }
+    }
+}
+
+impl Add for LineCol {
+    type Output = LineCol;
+    fn add(self, rhs: Self) -> Self::Output {
+        LineCol {
+            line: self.line + rhs.line,
+            col: self.col + rhs.col,
+        }
+    }
 }
 
 impl Display for LineCol {
