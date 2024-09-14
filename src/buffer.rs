@@ -262,10 +262,15 @@ impl TextBuffer for VecBuffer {
         };
     }
     fn max_col(&self, at: LineCol) -> usize {
-        self.get_buffer()[at.line].len()
+        let buf = self.get_buffer();
+        if buf.is_empty() {
+            0
+        } else {
+            buf[at.line].len()
+        }
     }
     fn max_line(&self) -> usize {
-        self.get_normal_text().len() - 1
+        self.get_normal_text().len().saturating_sub(1)
     }
     fn max_linecol(&self) -> LineCol {
         let buf = self.get_normal_text();

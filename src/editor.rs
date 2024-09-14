@@ -19,11 +19,12 @@ use crossterm::{
 };
 pub const LINE_NUMBER_SEPARATOR_EMPTY_COLUMNS: usize = 4;
 pub const LINE_NUMBER_RESERVED_COLUMNS: usize = 5;
+pub const LEFT_RESERVED_COLUMNS: usize =
+    LINE_NUMBER_RESERVED_COLUMNS + LINE_NUMBER_RESERVED_COLUMNS;
 
-use std::cmp::min;
 use std::collections::VecDeque;
 // use crate::modal::Modal;
-use crate::view_window::ViewWindow;
+use crate::viewport::Viewport;
 use std::io::{stdout, Stdout, Write};
 use std::process::exit;
 
@@ -42,7 +43,7 @@ pub struct Editor<Buff: TextBuffer> {
     pub(crate) forwards_history: VecDeque<String>,
     pub(crate) backwards_history: VecDeque<String>,
     pub(crate) history_pointer: u8,
-    pub(crate) view_window: ViewWindow,
+    pub(crate) view_window: Viewport,
     // Specifies whether a drawing of lines has happened before and if the app was opened without a
     // target file
     pub(crate) is_initial_launch: bool,
@@ -78,7 +79,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             forwards_history: VecDeque::new(),
             backwards_history: VecDeque::new(),
             history_pointer: 0,
-            view_window: ViewWindow::default(),
+            view_window: Viewport::default(),
             is_initial_launch: launch_without_target,
             copy_register: CopyRegister::default(),
         }
@@ -186,12 +187,17 @@ impl<Buff: TextBuffer> Editor<Buff> {
     /// This function can return an error if:
     /// - Terminal operations fail (e.g., enabling raw mode, reading events)
     /// - Drawing operations fail
-    pub fn run(&mut self) -> Result<()> {
+    pub fn run_main_loop(&mut self) -> Result<()> {
         terminal::enable_raw_mode()?;
 
         loop {
-            self.force_within_bounds();
-            self.control_view_window();
+            let empty_buffer = self.buffer.is_empty()
+                || self.buffer.line(0).is_err()
+                || self.buffer.line(0).unwrap().is_empty();
+            if !empty_buffer {
+                self.force_within_bounds();
+                self.control_view_window();
+            }
             match self.mode {
                 Modal::Command | Modal::Find(_) => {}
                 _ => self.buffer.clear_command(),
@@ -399,11 +405,14 @@ impl<Buff: TextBuffer> Editor<Buff> {
 
         for (i, line) in self
             .buffer
-            .get_full_lines_buffer_window(Some(self.view_window.top), Some(self.view_window.bot))?
+            .get_full_lines_buffer_window(
+                Some(self.view_window.topleft),
+                Some(self.view_window.bottomright()),
+            )?
             .iter()
             .enumerate()
         {
-            let line_number = self.view_window.top.line + i;
+            let line_number = self.view_window.topleft.line + i;
 
             execute!(stdout, terminal::Clear(ClearType::CurrentLine))?;
 
@@ -463,20 +472,6 @@ impl<Buff: TextBuffer> Editor<Buff> {
         writeln!(stdout)?;
         Ok(())
     }
-    // fn draw_line(&self, line: impl AsRef<str>, absolute_ln: usize) -> Result<()> {
-    //     let line = line.as_ref();
-    //     let selection = Selection::from(&self.cursor).normalized();
-    //     let line_in_highlight_bounds = absolute_ln >= selection.start.line && absolute_ln <= selection.end.line;
-    //     let highlight = self.mode.is_visual_line() && line_in_highlight_bounds;
-    //     if highlight { execute!(stdout(), SetBackgroundColor(Color::White), SetForegroundColor(Color::Black))?; }
-
-    //     println!("{line}\r");
-
-    //     if highlight {
-    //         execute!(stdout(), ResetColor)?;
-    //     };
-    //     Ok(())
-    // }
 
     fn create_line_numbers(&self, stdout: &mut Stdout, line_number: usize) -> Result<()> {
         execute!(stdout, style::SetForegroundColor(style::Color::Green))?;
@@ -498,59 +493,31 @@ impl<Buff: TextBuffer> Editor<Buff> {
     }
 
     pub(crate) fn center_view_window(&mut self) {
-        let (_, term_height) = terminal::size().expect("Terminal detection is corrupted.");
-        let term_height = term_height as usize;
-        let bottom_half = term_height / 2;
-        let top_half = if term_height % 2 != 0 {
-            bottom_half + 1
-        } else {
-            bottom_half
-        };
-
-        let current_pos = self.pos();
-        let top_border = current_pos.line.saturating_sub(top_half);
-        let bottom_border = min(current_pos.line + bottom_half, self.buffer.max_line());
-        self.view_window = {
-            ViewWindow {
-                top: LineCol {
-                    line: top_border,
-                    col: self.buffer.max_col(LineCol {
-                        line: top_border,
-                        col: 0,
-                    }),
-                },
-                bot: LineCol {
-                    line: bottom_border,
-                    col: self.buffer.max_col(LineCol {
-                        line: bottom_border,
-                        col: 0,
-                    }),
-                },
-            }
-        }
+        self.view_window.center(self.cursor.pos)
     }
-
 
     /// Makes sure the cursor is in bounds of the view window, if it isnt' follow the cursor with
     /// the bounds
     pub(crate) fn control_view_window(&mut self) {
         let current_line = self.pos().line;
-        let top_line = self.view_window.top.line + WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS;
-        let bot_line = self.view_window.bot.line.saturating_sub(WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS);
+        let top_line = self.view_window.topleft.line;
+        let bot_line = self.view_window.bottomright().line;
 
         // Adjusting by one done to prevent centering on cursor bumps
-        let cursor_out_of_bounds = current_line < top_line - 1 || current_line > bot_line + 1;
+        let cursor_out_of_bounds =
+            current_line < top_line.saturating_sub(1) || current_line > bot_line + 1;
 
         let cursor_less_than_proximity_from_top = current_line < top_line;
-        let main_cursor_more_than_proximity = current_line > WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS;
+        let main_cursor_more_than_proximity =
+            current_line > WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS;
         let cursor_less_than_proximity_from_bot = current_line > bot_line;
 
         if cursor_out_of_bounds {
             self.center_view_window();
         } else if cursor_less_than_proximity_from_top && main_cursor_more_than_proximity {
-            self.view_window += 1;
+            self.view_window.move_up(1)
         } else if cursor_less_than_proximity_from_bot {
-            self.view_window -= 1;
+            self.view_window.move_down(1)
         }
     }
 
@@ -564,7 +531,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     /// # Errors
     /// This function can return an error if the terminal cursor movement operation fails.
     pub fn move_cursor(&self) {
-        let cursor = self.view_window.calculate_view_cursor(self.pos());
+        let cursor = self.view_window.view_cursor(self.pos());
         #[allow(clippy::cast_possible_truncation)]
         let _ = execute!(
             stdout(),
