@@ -44,7 +44,7 @@ pub struct Editor<Buff: TextBuffer> {
     pub(crate) backwards_history: VecDeque<String>,
     pub(crate) history_pointer: u8,
     pub(crate) view_window: Viewport,
-    // Specifies whether a drawing of lines has happened before and if the app was opened without a
+    // Specifies whether a drawing of lines has happened before if the app was opened without a
     // target file
     pub(crate) is_initial_launch: bool,
     pub(crate) copy_register: CopyRegister,
@@ -428,7 +428,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         let mut stdout = stdout();
 
         let line_in_highlight_bounds =
-            absolute_ln >= selection.start.line && absolute_ln <= selection.end.line;
+            absolute_ln >= selection.start.line && absolute_ln < selection.end.line;
         let highlight_whole_line = (self.mode.is_visual_line() && line_in_highlight_bounds)
             || absolute_ln > selection.start.line
                 && (absolute_ln < selection.end.line.saturating_sub(1) && self.mode.is_visual());
