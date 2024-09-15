@@ -50,17 +50,6 @@ pub struct Editor<Buff: TextBuffer> {
     pub(crate) copy_register: CopyRegister,
 }
 
-impl<Buff: TextBuffer> Drop for Editor<Buff> {
-    fn drop(&mut self) {
-        let _ = terminal::disable_raw_mode();
-        let _ = execute!(
-            stdout(),
-            terminal::Clear(ClearType::All),
-            LeaveAlternateScreen
-        );
-    }
-}
-
 impl<Buff: TextBuffer> Editor<Buff> {
     /// Creates a new instance of `MainEditor`.
     ///
@@ -547,6 +536,17 @@ impl<Buff: TextBuffer> Editor<Buff> {
                     .expect("Column location lower than 0 or higher than 65356 is invalid"),
                 term_size - (NOTIFICATION_BAR_Y_LOCATION)
             )
+        );
+    }
+}
+
+impl<Buff: TextBuffer> Drop for Editor<Buff> {
+    fn drop(&mut self) {
+        let _ = terminal::disable_raw_mode();
+        let _ = execute!(
+            stdout(),
+            terminal::Clear(ClearType::All),
+            LeaveAlternateScreen
         );
     }
 }

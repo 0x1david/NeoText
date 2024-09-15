@@ -49,6 +49,7 @@ mod editor;
 mod highlighter;
 mod modals;
 mod searcher;
+mod theme;
 mod utils;
 mod viewport;
 use clap::Parser;
