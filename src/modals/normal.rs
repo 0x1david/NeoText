@@ -5,7 +5,7 @@ use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use crate::{
     bars::{draw_bar, get_info_bar_content, get_notif_bar_content, INFO_BAR, NOTIFICATION_BAR},
     buffer::TextBuffer,
-    cursor::LineCol,
+    cursor::{LineCol, Selection},
     editor::Editor,
     error::Error,
     notif_bar, repeat, Result,
@@ -136,6 +136,13 @@ impl<Buff: TextBuffer> Editor<Buff> {
     pub fn handle_char_input(&mut self, ch: char, carry_over: Option<i32>) -> Result<()> {
         match ch {
             combination @ ('r' | 't' | 'd' | 'z' | 'f' | 'g' | 'F' | 'T') => {
+                if combination == 'd' && self.mode.is_any_visual() {
+                    let sel = Selection::from(&self.cursor).normalized();
+
+                    let dest = self.buffer.delete_selection(sel.start, sel.end)?;
+                    self.cursor.pos = dest;
+                    self.set_mode(Modal::Normal)
+                }
                 self.run_normal(carry_over, Some(combination))?;
             }
             'y' => {
@@ -174,6 +181,11 @@ impl<Buff: TextBuffer> Editor<Buff> {
             'l' => repeat!(self.cursor.bump_right(); carry_over),
             'k' => repeat!(self.cursor.bump_up(); carry_over),
             'j' => repeat!(self.cursor.bump_down(); carry_over),
+            'J' => {
+                if self.mode.is_any_visual() {
+                    // Add Join Lines
+                }
+            }
             'W' => repeat!(self.move_to_next_word_after_whitespace()?; carry_over),
             'w' => repeat!(self.move_to_next_non_alphanumeric()?; carry_over),
             'G' => self.move_to_lowest_line(),
