@@ -1,4 +1,4 @@
-use crate::{cursor::LineCol, editor::LEFT_RESERVED_COLUMNS};
+use crate::{editor::LEFT_RESERVED_COLUMNS, LineCol};
 
 const BAR_GAP: u16 = 2;
 

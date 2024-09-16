@@ -5,10 +5,10 @@ use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use crate::{
     bars::{draw_bar, get_info_bar_content, get_notif_bar_content, INFO_BAR, NOTIFICATION_BAR},
     buffer::TextBuffer,
-    cursor::{LineCol, Selection},
+    cursor::Selection,
     editor::Editor,
     error::Error,
-    notif_bar, repeat, Result,
+    notif_bar, repeat, LineCol, Result,
 };
 
 const SCROLL_JUMP_DISTANCE: usize = 25;
