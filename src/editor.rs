@@ -1,35 +1,34 @@
 #![allow(clippy::match_wild_err_arm)]
 use crate::bars::{
-    draw_bar, get_debug_messages, get_info_bar_content, get_notif_bar_content, COMMAND_BAR,
-    INFO_BAR, NOTIFICATION_BAR, NOTIFICATION_BAR_Y_LOCATION,
+    draw_bar, get_info_bar_content, get_notif_bar_content, COMMAND_BAR, INFO_BAR, NOTIFICATION_BAR,
+    NOTIFICATION_BAR_Y_LOCATION,
 };
 use crate::buffer::TextBuffer;
 use crate::copy_register::CopyRegister;
-use crate::cursor::{Cursor, LineCol, Selection};
+use crate::cursor::{Cursor, Selection};
+use crate::highlighter::{Highlighter, Style};
 use crate::modals::{FindMode, Modal};
-use crate::notif_bar;
 use crate::utils::draw_ascii_art;
-use crate::{Error, Result};
-use crossterm::style::{self, Color, ResetColor, SetBackgroundColor, SetForegroundColor};
-use crossterm::terminal::LeaveAlternateScreen;
+use crate::viewport::Viewport;
+use crate::{get_debug_messages, notif_bar, Error, LineCol, Result};
+use crossterm::QueueableCommand;
 use crossterm::{
     event::{self, Event, KeyCode},
-    execute,
+    style::{self, Color, ResetColor, SetBackgroundColor, SetForegroundColor},
     terminal::{self, ClearType},
 };
+use rangemap::RangeMap;
+use std::{
+    collections::VecDeque,
+    io::{stdout, Stdout, Write},
+};
+
+const MAX_HISTORY: usize = 50;
+const WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS: usize = 8;
 pub const LINE_NUMBER_SEPARATOR_EMPTY_COLUMNS: usize = 4;
 pub const LINE_NUMBER_RESERVED_COLUMNS: usize = 5;
 pub const LEFT_RESERVED_COLUMNS: usize =
     LINE_NUMBER_RESERVED_COLUMNS + LINE_NUMBER_RESERVED_COLUMNS;
-
-use std::collections::VecDeque;
-// use crate::modal::Modal;
-use crate::viewport::Viewport;
-use std::io::{stdout, Stdout, Write};
-use std::process::exit;
-
-const MAX_HISTORY: usize = 50;
-const WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS: usize = 8;
 
 /// The main editor is used as the main API for all commands
 pub struct Editor<Buff: TextBuffer> {
@@ -48,6 +47,7 @@ pub struct Editor<Buff: TextBuffer> {
     // target file
     pub(crate) is_initial_launch: bool,
     pub(crate) copy_register: CopyRegister,
+    highlighter: Highlighter,
 }
 
 impl<Buff: TextBuffer> Editor<Buff> {
@@ -60,6 +60,8 @@ impl<Buff: TextBuffer> Editor<Buff> {
     /// A new `MainEditor` instance initialized with the given buffer and default cursor position.
     pub fn new(buffer: Buff, launch_without_target: bool) -> Self {
         Self {
+            highlighter: Highlighter::new(buffer.get_coalesced_bytes())
+                .expect("Tree sitter needs to parse."),
             buffer,
             prev_pos: LineCol { line: 0, col: 0 },
             cursor: Cursor::default(),
@@ -242,7 +244,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         if self.run_command()? {
             match self.buffer.get_command_text()[0].as_str() {
                 ":q" => return Err(Error::ExitCall),
-                "/EXIT NOW" => exit(0),
+                "/EXIT NOW" => std::process::exit(0),
                 _ => {}
             };
             self.set_mode(Modal::Normal);
@@ -380,7 +382,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     pub(crate) fn draw_lines(&mut self) -> Result<()> {
         let mut stdout = stdout();
         // let (_, term_height) = terminal::size()?;
-        execute!(
+        crossterm::execute!(
             stdout,
             terminal::Clear(ClearType::All),
             crossterm::cursor::MoveTo(0, 0),
@@ -391,6 +393,9 @@ impl<Buff: TextBuffer> Editor<Buff> {
             self.is_initial_launch = false;
             return Ok(());
         }
+
+        let mut byte_index = self.buffer.get_preceding_byte_len(self.view_window.topleft);
+        let style_map = self.highlighter.highlight(self.buffer.get_entire_text())?;
 
         for (i, line) in self
             .buffer
@@ -403,15 +408,48 @@ impl<Buff: TextBuffer> Editor<Buff> {
         {
             let line_number = self.view_window.topleft.line + i;
 
-            execute!(stdout, terminal::Clear(ClearType::CurrentLine))?;
+            crossterm::execute!(stdout, terminal::Clear(ClearType::CurrentLine))?;
 
             self.create_line_numbers(&mut stdout, line_number + 1)?;
-            self.draw_line(line, line_number)?;
+            // self.draw_line(line, line_number, &mut byte_index)?;
+            self.draw_line_new(line, line_number, &mut byte_index, &style_map)?;
         }
 
         Ok(())
     }
-    fn draw_line(&self, line: impl AsRef<str>, absolute_ln: usize) -> Result<()> {
+    /// Currently parsing through the tree and printing char by char, a more efficient version
+    /// would go over a token representation by token representation. Whitespace or other symbol
+    /// delimited
+    fn draw_line_new(
+        &self,
+        line: impl AsRef<str>,
+        absolute_ln: usize,
+        byte_offset: &mut usize,
+        style_map: &RangeMap<usize, Style>,
+    ) -> Result<()> {
+        let line = line.as_ref();
+        let mut stdout = stdout();
+        let selection = Selection::from(&self.cursor).normalized();
+        let default_style = &Style::default();
+
+        for ch in line.chars() {
+            let style = style_map.get(byte_offset).unwrap_or(default_style);
+            crossterm::execute!(
+                stdout,
+                SetBackgroundColor(Color::Reset),
+                SetForegroundColor(style.fg),
+                style::Print(ch)
+            )?;
+        }
+        Ok(())
+    }
+
+    fn draw_line(
+        &self,
+        line: impl AsRef<str>,
+        absolute_ln: usize,
+        byte_offset: &mut usize,
+    ) -> Result<()> {
         let line = line.as_ref();
         let selection = Selection::from(&self.cursor).normalized();
         let mut stdout = stdout();
@@ -423,13 +461,13 @@ impl<Buff: TextBuffer> Editor<Buff> {
                 && (absolute_ln < selection.end.line.saturating_sub(1) && self.mode.is_visual());
 
         if highlight_whole_line {
-            execute!(
+            crossterm::execute!(
                 stdout,
                 SetBackgroundColor(Color::White),
                 SetForegroundColor(Color::Black)
             )?;
             write!(stdout, "{}\r", line)?;
-            execute!(stdout, ResetColor)?;
+            crossterm::execute!(stdout, ResetColor)?;
         } else if self.mode.is_visual() && line_in_highlight_bounds {
             let start_col = if absolute_ln == selection.start.line {
                 selection.start.col
@@ -444,13 +482,13 @@ impl<Buff: TextBuffer> Editor<Buff> {
 
             write!(stdout, "{}", &line[..start_col])?;
 
-            execute!(
+            crossterm::execute!(
                 stdout,
                 SetBackgroundColor(Color::White),
                 SetForegroundColor(Color::Black)
             )?;
             write!(stdout, "{}", &line[start_col..end_col])?;
-            execute!(stdout, ResetColor)?;
+            crossterm::execute!(stdout, ResetColor)?;
 
             // Print part after selection
             write!(stdout, "{}\r", &line[end_col..])?;
@@ -463,7 +501,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     }
 
     fn create_line_numbers(&self, stdout: &mut Stdout, line_number: usize) -> Result<()> {
-        execute!(stdout, style::SetForegroundColor(style::Color::Green))?;
+        crossterm::execute!(stdout, style::SetForegroundColor(style::Color::Green))?;
         let rel_line_number = (line_number as i64 - self.pos().line as i64 - 1).abs();
         let line_number = if rel_line_number == 0 {
             line_number as i64
@@ -477,7 +515,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             width = LINE_NUMBER_RESERVED_COLUMNS,
             separator = " ".repeat(LINE_NUMBER_SEPARATOR_EMPTY_COLUMNS)
         );
-        execute!(stdout, ResetColor)?;
+        crossterm::execute!(stdout, ResetColor)?;
         Ok(())
     }
 
@@ -522,14 +560,14 @@ impl<Buff: TextBuffer> Editor<Buff> {
     pub fn move_cursor(&self) {
         let cursor = self.view_window.view_cursor(self.pos());
         #[allow(clippy::cast_possible_truncation)]
-        let _ = execute!(
+        let _ = crossterm::execute!(
             stdout(),
             crossterm::cursor::MoveTo(cursor.col as u16, cursor.line as u16,)
         );
     }
 
     fn move_command_cursor(&self, term_size: u16) {
-        let _ = execute!(
+        let _ = crossterm::execute!(
             stdout(),
             crossterm::cursor::MoveTo(
                 u16::try_from(self.cursor.col())
@@ -543,10 +581,10 @@ impl<Buff: TextBuffer> Editor<Buff> {
 impl<Buff: TextBuffer> Drop for Editor<Buff> {
     fn drop(&mut self) {
         let _ = terminal::disable_raw_mode();
-        let _ = execute!(
+        let _ = crossterm::execute!(
             stdout(),
             terminal::Clear(ClearType::All),
-            LeaveAlternateScreen
+            crossterm::terminal::LeaveAlternateScreen
         );
     }
 }

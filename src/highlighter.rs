@@ -1,64 +1,109 @@
-// use crate::{cursor::LineCol, Result};
-// use crossterm::style::Color;
-// use tree_sitter::{Language, Parser, Query, QueryCursor, Tree, TreeCursor};
-// use tree_sitter_rust::{language, HIGHLIGHTS_QUERY};
+use std::{collections::btree_map::Range, ops::RangeInclusive};
 
-// pub struct Highlighter {
-//     parser: Parser,
-//     query: Query,
-// }
-// impl Highlighter {
-//     fn new() -> Result<Self> {
-//         let lang = &language();
-//         let mut parser = Parser::new();
-//         parser
-//             .set_language(lang)
-//             .expect("Couldn't create parser for the given language");
-//         let query = Query::new(lang, HIGHLIGHTS_QUERY)
-//             .expect("Couldn't create query for the language parser");
-//         Ok(Self { parser, query })
-//     }
-//     pub fn highlight(&mut self, text: &[String]) -> Result<&[HLSpan]> {
-//         let text = text.join("\n");
-//         let tree = self
-//             .parser
-//             .parse(text, None)
-//             .expect("Parsing should work just fine");
+use crate::{
+    theme::{DefaultTheme, Theme},
+    Result,
+};
+use crossterm::style::Color;
+use rangemap::{RangeInclusiveMap, RangeMap};
+use tree_sitter::{Parser, Query, QueryCursor};
+use tree_sitter_rust::{language, HIGHLIGHTS_QUERY};
 
-//         let mut highlights = vec![];
-//         let mut cursor = QueryCursor::new();
-//         let matches = cursor.matches(&self.query, tree.root_node(), text.as_bytes());
+pub struct Highlighter {
+    parser: Parser,
+    query: Query,
+    pub theme: Box<dyn Theme>,
+    tree: Option<tree_sitter::Tree>,
+}
+impl Highlighter {
+    pub fn new(text: impl AsRef<[u8]>) -> Result<Self> {
+        let lang = &language();
+        let mut parser = Parser::new();
+        parser
+            .set_language(lang)
+            .expect("Couldn't create parser for the given language");
+        let query = Query::new(lang, HIGHLIGHTS_QUERY)
+            .expect("Couldn't create query for the language parser");
 
-//         for m in matches {
-//             for capture in m.captures {
-//                 let node = capture.node;
-//                 let start = node.start_byte();
-//                 let end = node.end_byte();
-//                 let scope = self.query.capture_names()[capture.index as usize];
-//                 let style = self.theme.get_style(scope);
+        Ok(Self {
+            query,
+            theme: Box::new(DefaultTheme {}),
+            tree: parser.parse(text, None),
+            parser,
+        })
+    }
+    fn parse(&mut self, t: impl AsRef<[u8]>) {
+        let tree = self.parser.parse(&t, self.tree.as_ref());
+        self.tree = tree
+    }
+    pub fn highlight(&mut self, text: &[String]) -> Result<RangeMap<usize, Style>> {
+        let text = text.join("\n");
+        self.parse(&text);
 
-//                 if let Some(style) = style {
-//                     colors.push(HLSpan { span.0: start, end, style });
-//                 }
-//             }
-//         }
-//         Ok(())
-//     }
-// }
+        let mut cursor = QueryCursor::new();
+        let tree = self.tree.as_ref().expect("Parsing preceds highlighting");
+        let matches = cursor.matches(&self.query, tree.root_node(), text.as_bytes());
+        let mut style_map = RangeMap::new();
 
-// pub struct HLSpan {
-//     span: (LineCol, LineCol),
-//     style: Style,
-// }
-// impl HLSpan {
-//     pub fn contains(&self, pos: LineCol) -> bool {
-//         pos >= self.span.0 && pos < self.span.1
-//     }
-// }
+        for m in matches {
+            for capture in m.captures {
+                let node = capture.node;
+                let from = node.start_byte();
+                let to = node.end_byte();
+                let scope = self.query.capture_names()[capture.index as usize];
+                let style = self.theme.from_str(scope);
 
-// pub struct Style {
-//     pub fg: Option<Color>,
-//     pub bg: Option<Color>,
-//     pub bold: bool,
-//     pub italic: bool,
-// }
+                style_map.insert(from..to, Style::new(style, Color::Reset, false, false));
+            }
+        }
+        Ok(style_map)
+    }
+}
+
+/// Style with span location
+pub struct StyleSpan {
+    span: (usize, usize),
+    style: Style,
+}
+impl StyleSpan {
+    pub fn contains(&self, pos: usize) -> bool {
+        pos >= self.span.0 && pos < self.span.1
+    }
+
+    pub fn new(from: usize, to: usize, fg: Color, bg: Color, bold: bool, italic: bool) -> Self {
+        Self {
+            span: (from, to),
+            style: Style::new(fg, bg, bold, italic),
+        }
+    }
+}
+
+/// Contains style information
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Style {
+    pub fg: Color,
+    pub bg: Color,
+    pub bold: bool,
+    pub italic: bool,
+}
+impl Default for Style {
+    fn default() -> Self {
+        Self {
+            fg: Color::Reset,
+            bg: Color::Reset,
+            bold: false,
+            italic: false,
+        }
+    }
+}
+
+impl Style {
+    pub fn new(fg: Color, bg: Color, bold: bool, italic: bool) -> Self {
+        Self {
+            fg,
+            bg,
+            bold,
+            italic,
+        }
+    }
+}

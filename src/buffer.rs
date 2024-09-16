@@ -1,4 +1,4 @@
-use crate::{cursor::LineCol, modals::Modal, searcher::Pattern};
+use crate::{modals::Modal, LineCol, Pattern};
 use crate::{Error, Result};
 use std::collections::VecDeque;
 
@@ -7,6 +7,7 @@ use std::collections::VecDeque;
 pub trait TextBuffer {
     fn set_plane(&mut self, modal: &Modal);
     fn insert_newline(&mut self, at: LineCol) -> LineCol;
+    fn get_preceding_byte_len(&self, to: LineCol) -> usize;
     /// Insert a single symbol at specified position
     fn insert(&mut self, at: LineCol, insertable: char) -> Result<LineCol>;
 
@@ -40,6 +41,9 @@ pub trait TextBuffer {
 
     /// Get the number of lines in the buffer
     fn line_count(&self) -> usize;
+
+    /// Get a single continuous vec of bytes containing the entire text
+    fn get_coalesced_bytes(&self) -> Vec<u8>;
 
     /// Get the contents of a specific line
     fn line(&self, line_number: usize) -> Result<&str>;
@@ -196,6 +200,16 @@ impl VecBuffer {
 }
 
 impl TextBuffer for VecBuffer {
+    /// Get entire text as a single vec of bytes.
+    /// This method clones the buffer, and thus should be only done for the initial parsing of the
+    /// tree
+    fn get_coalesced_bytes(&self) -> Vec<u8> {
+        self.text
+            .clone()
+            .into_iter()
+            .flat_map(|s| s.into_bytes())
+            .collect()
+    }
     // Gets only partial buffer from a position to a position
     fn get_buffer_window(&self, from: Option<LineCol>, to: Option<LineCol>) -> Result<Vec<String>> {
         if from.is_none() && to.is_none() {
@@ -729,6 +743,11 @@ impl TextBuffer for VecBuffer {
             at.col -= 1;
         }
         Ok(at)
+    }
+    fn get_preceding_byte_len(&self, to: LineCol) -> usize {
+        self.get_buffer_window(None, Some(to))
+            .map(|window| window.iter().map(|string| string.len()).sum())
+            .unwrap_or(0)
     }
 }
 #[cfg(test)]
