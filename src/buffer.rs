@@ -204,11 +204,7 @@ impl TextBuffer for VecBuffer {
     /// This method clones the buffer, and thus should be only done for the initial parsing of the
     /// tree
     fn get_coalesced_bytes(&self) -> Vec<u8> {
-        self.text
-            .clone()
-            .into_iter()
-            .flat_map(|s| s.into_bytes())
-            .collect()
+        self.text.join("\n").as_bytes().to_owned()
     }
     // Gets only partial buffer from a position to a position
     fn get_buffer_window(&self, from: Option<LineCol>, to: Option<LineCol>) -> Result<Vec<String>> {
