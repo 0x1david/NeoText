@@ -1,11 +1,9 @@
-use std::{collections::btree_map::Range, ops::RangeInclusive};
-
 use crate::{
-    theme::{DefaultTheme, Theme},
+    theme::{self, Theme},
     Result,
 };
 use crossterm::style::Color;
-use rangemap::{RangeInclusiveMap, RangeMap};
+use rangemap::RangeMap;
 use tree_sitter::{Parser, Query, QueryCursor};
 use tree_sitter_rust::{language, HIGHLIGHTS_QUERY};
 
@@ -27,22 +25,20 @@ impl Highlighter {
 
         Ok(Self {
             query,
-            theme: Box::new(DefaultTheme {}),
+            theme: Box::new(theme::Monokai {}),
             tree: parser.parse(text, None),
             parser,
         })
     }
-    fn parse(&mut self, t: impl AsRef<[u8]>) {
-        let tree = self.parser.parse(&t, self.tree.as_ref());
-        self.tree = tree
+    pub fn parse(&mut self, t: &[u8]) {
+        let tree = self.parser.parse(t, self.tree.as_ref());
+        self.tree = tree;
     }
-    pub fn highlight(&mut self, text: &[String]) -> Result<RangeMap<usize, Style>> {
-        let text = text.join("\n");
-        self.parse(&text);
-
+    pub fn highlight(&mut self, text: &[u8]) -> Result<RangeMap<usize, Style>> {
         let mut cursor = QueryCursor::new();
         let tree = self.tree.as_ref().expect("Parsing preceds highlighting");
-        let matches = cursor.matches(&self.query, tree.root_node(), text.as_bytes());
+
+        let matches = cursor.matches(&self.query, tree.root_node(), text);
         let mut style_map = RangeMap::new();
 
         for m in matches {
@@ -53,7 +49,7 @@ impl Highlighter {
                 let scope = self.query.capture_names()[capture.index as usize];
                 let style = self.theme.from_str(scope);
 
-                style_map.insert(from..to, Style::new(style, Color::Reset, false, false));
+                style_map.insert(from..to + 1, Style::new(style, Color::Reset, false, false));
             }
         }
         Ok(style_map)

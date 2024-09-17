@@ -11,7 +11,6 @@ use crate::modals::{FindMode, Modal};
 use crate::utils::draw_ascii_art;
 use crate::viewport::Viewport;
 use crate::{get_debug_messages, notif_bar, Error, LineCol, Result};
-use crossterm::QueueableCommand;
 use crossterm::{
     event::{self, Event, KeyCode},
     style::{self, Color, ResetColor, SetBackgroundColor, SetForegroundColor},
@@ -158,7 +157,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             Err(Error::InvalidPosition) => panic!("Cursor found in a position it should never appear in: ({}), please contact the developers.", self.pos()),
             Err(Error::ImATeacup) => {}
             Err(_) => panic!("UnexpectedError, please contact the developers.")
-        }
+        };
     }
     pub fn newline(&mut self) {
         self.cursor.pos = self.buffer.insert_newline(self.pos());
@@ -382,10 +381,10 @@ impl<Buff: TextBuffer> Editor<Buff> {
     pub(crate) fn draw_lines(&mut self) -> Result<()> {
         let mut stdout = stdout();
         // let (_, term_height) = terminal::size()?;
-        crossterm::execute!(
+        crossterm::queue!(
             stdout,
-            terminal::Clear(ClearType::All),
             crossterm::cursor::MoveTo(0, 0),
+            terminal::Clear(ClearType::All),
         )?;
 
         if self.is_initial_launch {
@@ -393,9 +392,10 @@ impl<Buff: TextBuffer> Editor<Buff> {
             self.is_initial_launch = false;
             return Ok(());
         }
-
         let mut byte_index = self.buffer.get_preceding_byte_len(self.view_window.topleft);
-        let style_map = self.highlighter.highlight(self.buffer.get_entire_text())?;
+        let own_buf = self.buffer.get_coalesced_bytes();
+        self.highlighter.parse(&own_buf);
+        let style_map = self.highlighter.highlight(&own_buf)?;
 
         for (i, line) in self
             .buffer
@@ -408,12 +408,17 @@ impl<Buff: TextBuffer> Editor<Buff> {
         {
             let line_number = self.view_window.topleft.line + i;
 
-            crossterm::execute!(stdout, terminal::Clear(ClearType::CurrentLine))?;
+            crossterm::queue!(
+                stdout,
+                crossterm::cursor::MoveDown(1),
+                crossterm::cursor::MoveToColumn(0),
+            )?;
 
             self.create_line_numbers(&mut stdout, line_number + 1)?;
-            // self.draw_line(line, line_number, &mut byte_index)?;
             self.draw_line_new(line, line_number, &mut byte_index, &style_map)?;
+            byte_index += 1;
         }
+        stdout.flush()?;
 
         Ok(())
     }
@@ -432,14 +437,39 @@ impl<Buff: TextBuffer> Editor<Buff> {
         let selection = Selection::from(&self.cursor).normalized();
         let default_style = &Style::default();
 
-        for ch in line.chars() {
+        // Decide on highlighting
+        let line_in_highlight_bounds =
+            absolute_ln >= selection.start.line && absolute_ln < selection.end.line;
+        let highlight_whole_line = (self.mode.is_visual_line() && line_in_highlight_bounds)
+            || absolute_ln > selection.start.line
+                && (absolute_ln < selection.end.line.saturating_sub(1) && self.mode.is_visual());
+
+        let highlight_range = if highlight_whole_line {
+            0f32..f32::INFINITY
+        } else if line_in_highlight_bounds {
+            selection.start.col as f32..selection.end.col as f32
+        } else {
+            0f32..f32::NEG_INFINITY
+        };
+
+        // Outputting
+        for (col, ch) in line.chars().enumerate() {
+            // Highlighting
+            let bg_color = if self.mode.is_any_visual() && highlight_range.contains(&(col as f32)) {
+                SetBackgroundColor(Color::Black)
+            } else {
+                SetBackgroundColor(Color::Reset)
+            };
+
+            // Styling and Printing
             let style = style_map.get(byte_offset).unwrap_or(default_style);
-            crossterm::execute!(
+            crossterm::queue!(
                 stdout,
-                SetBackgroundColor(Color::Reset),
                 SetForegroundColor(style.fg),
+                bg_color,
                 style::Print(ch)
             )?;
+            *byte_offset += ch.len_utf8();
         }
         Ok(())
     }
@@ -562,7 +592,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         #[allow(clippy::cast_possible_truncation)]
         let _ = crossterm::execute!(
             stdout(),
-            crossterm::cursor::MoveTo(cursor.col as u16, cursor.line as u16,)
+            crossterm::cursor::MoveTo(cursor.col as u16, cursor.line as u16 + 1)
         );
     }
 
