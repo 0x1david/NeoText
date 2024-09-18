@@ -41,15 +41,14 @@ impl Highlighter {
         let matches = cursor.matches(&self.query, tree.root_node(), text);
         let mut style_map = RangeMap::new();
 
-        for m in matches {
-            for capture in m.captures {
+        for match_ in matches {
+            for capture in match_.captures {
                 let node = capture.node;
-                let from = node.start_byte();
-                let to = node.end_byte();
+                let range = node.byte_range();
                 let scope = self.query.capture_names()[capture.index as usize];
                 let style = self.theme.from_str(scope);
 
-                style_map.insert(from..to + 1, Style::new(style, Color::Reset, false, false));
+                style_map.insert(range, Style::new(style, Color::Reset, false, false));
             }
         }
         Ok(style_map)
