@@ -741,8 +741,11 @@ impl TextBuffer for VecBuffer {
         Ok(at)
     }
     fn get_preceding_byte_len(&self, to: LineCol) -> usize {
+        // self.get_buffer_window(None, Some(to))
+        //     .map(|window| window.iter().map(|string| string.len()).sum())
+        //     .unwrap_or(0)
         self.get_buffer_window(None, Some(to))
-            .map(|window| window.iter().map(|string| string.len()).sum())
+            .map(|window| window.iter().map(|s| s.len() + 1).sum())
             .unwrap_or(0)
     }
 }
