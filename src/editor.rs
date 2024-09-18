@@ -392,7 +392,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             self.is_initial_launch = false;
             return Ok(());
         }
-        let mut byte_index = self.buffer.get_preceding_byte_len(self.view_window.topleft);
+        let mut byte_index = self.buffer.get_byte_offset(self.view_window.topleft);
         let own_buf = self.buffer.get_coalesced_bytes();
         self.highlighter.parse(&own_buf);
         let style_map = self.highlighter.highlight(&own_buf)?;
@@ -423,8 +423,8 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
     /// Currently parsing through the tree and printing char by char, a more efficient version
-    /// would go over a token representation by token representation. Whitespace or other symbol
-    /// delimited
+    /// would go over a lexeme representation. Whitespace or other symbol
+    /// delimited.
     fn draw_line_new(
         &self,
         line: impl AsRef<str>,

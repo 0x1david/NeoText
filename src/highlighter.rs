@@ -1,6 +1,6 @@
 use crate::{
     theme::{self, Theme},
-    Result,
+    LineCol, Result,
 };
 use crossterm::style::Color;
 use rangemap::RangeMap;
@@ -25,7 +25,7 @@ impl Highlighter {
 
         Ok(Self {
             query,
-            theme: Box::new(theme::Monokai {}),
+            theme: Box::new(theme::MonoAndromeda {}),
             tree: parser.parse(text, None),
             parser,
         })
