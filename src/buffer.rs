@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 pub trait TextBuffer {
     fn set_plane(&mut self, modal: &Modal);
     fn insert_newline(&mut self, at: LineCol) -> LineCol;
-    fn get_preceding_byte_len(&self, to: LineCol) -> usize;
+    fn get_byte_offset(&self, to: LineCol) -> usize;
     /// Insert a single symbol at specified position
     fn insert(&mut self, at: LineCol, insertable: char) -> Result<LineCol>;
 
@@ -740,11 +740,9 @@ impl TextBuffer for VecBuffer {
         }
         Ok(at)
     }
-    fn get_preceding_byte_len(&self, to: LineCol) -> usize {
-        // self.get_buffer_window(None, Some(to))
-        //     .map(|window| window.iter().map(|string| string.len()).sum())
-        //     .unwrap_or(0)
-        self.get_buffer_window(None, Some(to))
+    /// Return the byte offset at which a character at a given linecol starts.
+    fn get_byte_offset(&self, at: LineCol) -> usize {
+        self.get_buffer_window(None, Some(at))
             .map(|window| window.iter().map(|s| s.len() + 1).sum())
             .unwrap_or(0)
     }
