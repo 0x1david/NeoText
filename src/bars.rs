@@ -65,16 +65,15 @@ impl BarInfo {
     }
 }
 
-pub fn draw_bar<F>(bar: &BarInfo, content_generator: F) -> Result<()>
+pub fn draw_bar<F>(term: &mut std::io::Stdout, bar: &BarInfo, content_generator: F) -> Result<()>
 where
     F: FnOnce(usize, usize) -> String,
 {
-    let mut stdout = stdout();
     let (term_width, term_height) = terminal::size()?;
     let y_position = term_height - 1 - bar.y_offset;
 
     execute!(
-        stdout,
+        term,
         crossterm::cursor::MoveTo(0, y_position),
         terminal::Clear(ClearType::CurrentLine),
         style::SetForegroundColor(bar.fg_color),
@@ -87,8 +86,8 @@ where
         .saturating_sub(content.len())
         .saturating_sub(bar.x_padding as usize);
     print!("{}", " ".repeat(remaining_width));
-    stdout.flush()?;
-    execute!(stdout, style::ResetColor)?;
+    term.flush()?;
+    execute!(term, style::ResetColor)?;
 
     Ok(())
 }

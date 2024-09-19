@@ -17,10 +17,7 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 use rangemap::RangeMap;
-use std::{
-    collections::VecDeque,
-    io::{stdout, Stdout, Write},
-};
+use std::{collections::VecDeque, io::Write};
 
 const MAX_HISTORY: usize = 50;
 const WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS: usize = 6;
@@ -41,7 +38,7 @@ pub struct Editor<Buff: TextBuffer> {
     pub(crate) forwards_history: VecDeque<String>,
     pub(crate) backwards_history: VecDeque<String>,
     pub(crate) history_pointer: u8,
-    pub(crate) view_window: Viewport,
+    pub(crate) viewport: Viewport,
     // Specifies whether a drawing of lines has happened before if the app was opened without a
     // target file
     pub(crate) is_initial_launch: bool,
@@ -69,7 +66,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             forwards_history: VecDeque::new(),
             backwards_history: VecDeque::new(),
             history_pointer: 0,
-            view_window: Viewport::default(),
+            viewport: Viewport::default(),
             is_initial_launch: launch_without_target,
             copy_register: CopyRegister::default(),
         }
@@ -255,10 +252,13 @@ impl<Buff: TextBuffer> Editor<Buff> {
 
     fn run_insert(&mut self) -> Result<()> {
         self.draw_lines()?;
-        draw_bar(&INFO_BAR, |term_width, _| {
-            get_info_bar_content(term_width, &self.mode, self.pos())
+        let pos = self.pos();
+        draw_bar(&mut self.viewport.terminal, &INFO_BAR, |term_width, _| {
+            get_info_bar_content(term_width, &self.mode, pos)
         })?;
-        draw_bar(&NOTIFICATION_BAR, |_, _| get_notif_bar_content())?;
+        draw_bar(&mut self.viewport.terminal, &NOTIFICATION_BAR, |_, _| {
+            get_notif_bar_content()
+        })?;
         self.move_cursor();
         self.force_within_bounds();
 
@@ -336,10 +336,11 @@ impl<Buff: TextBuffer> Editor<Buff> {
     }
     fn run_command(&mut self) -> Result<bool> {
         self.draw_lines()?;
-        draw_bar(&INFO_BAR, |term_width, _| {
-            get_info_bar_content(term_width, &self.mode, self.pos())
+        let pos = self.pos();
+        draw_bar(&mut self.viewport.terminal, &INFO_BAR, |term_width, _| {
+            get_info_bar_content(term_width, &self.mode, pos)
         })?;
-        draw_bar(&COMMAND_BAR, |_, _| {
+        draw_bar(&mut self.viewport.terminal, &COMMAND_BAR, |_, _| {
             self.buffer.get_command_text()[0].to_string()
         })?;
         let (_, term_height) = terminal::size()?;
@@ -381,20 +382,19 @@ impl<Buff: TextBuffer> Editor<Buff> {
     /// # Errors
     /// This function can return an error if terminal operations (e.g., clearing, moving cursor, writing) fail.
     pub(crate) fn draw_lines(&mut self) -> Result<()> {
-        let mut stdout = stdout();
         // let (_, term_height) = terminal::size()?;
         crossterm::queue!(
-            stdout,
+            self.viewport.terminal,
             crossterm::cursor::MoveTo(0, 0),
             terminal::Clear(ClearType::All),
         )?;
 
         if self.is_initial_launch {
-            draw_ascii_art()?;
+            draw_ascii_art(&mut self.viewport.terminal)?;
             self.is_initial_launch = false;
             return Ok(());
         }
-        let mut byte_index = self.buffer.get_byte_offset(self.view_window.topleft);
+        let mut byte_index = self.buffer.get_byte_offset(self.viewport.topleft);
         let own_buf = self.buffer.get_coalesced_bytes();
         self.highlighter.parse(&own_buf);
         let style_map = self.highlighter.highlight(&own_buf)?;
@@ -402,25 +402,26 @@ impl<Buff: TextBuffer> Editor<Buff> {
         for (i, line) in self
             .buffer
             .get_full_lines_buffer_window(
-                Some(self.view_window.topleft),
-                Some(self.view_window.bottomright()),
+                Some(self.viewport.topleft),
+                Some(self.viewport.bottomright()),
             )?
             .iter()
             .enumerate()
         {
-            let line_number = self.view_window.topleft.line + i;
+            let line_number = self.viewport.topleft.line + i;
 
             crossterm::queue!(
-                stdout,
+                self.viewport.terminal,
                 crossterm::cursor::MoveDown(1),
                 crossterm::cursor::MoveToColumn(0),
             )?;
 
-            self.create_line_numbers(&mut stdout, line_number + 1)?;
+            self.create_line_numbers(line_number + 1)?;
+
             self.draw_line_new(line, line_number, &mut byte_index, &style_map)?;
             byte_index += 1;
         }
-        stdout.flush()?;
+        self.viewport.terminal.flush()?;
 
         Ok(())
     }
@@ -428,14 +429,13 @@ impl<Buff: TextBuffer> Editor<Buff> {
     /// would go over a lexeme representation. Whitespace or other symbol
     /// delimited.
     fn draw_line_new(
-        &self,
+        &mut self,
         line: impl AsRef<str>,
         absolute_ln: usize,
         byte_offset: &mut usize,
         style_map: &RangeMap<usize, Style>,
     ) -> Result<()> {
         let line = line.as_ref();
-        let mut stdout = stdout();
         let selection = Selection::from(&self.cursor).normalized();
         let default_style = &Style::default();
 
@@ -466,7 +466,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             // Styling and Printing
             let style = style_map.get(byte_offset).unwrap_or(default_style);
             crossterm::queue!(
-                stdout,
+                self.viewport.terminal,
                 SetForegroundColor(style.fg),
                 bg_color,
                 style::Print(ch)
@@ -476,64 +476,67 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
 
-    fn draw_line(
-        &self,
-        line: impl AsRef<str>,
-        absolute_ln: usize,
-        byte_offset: &mut usize,
-    ) -> Result<()> {
-        let line = line.as_ref();
-        let selection = Selection::from(&self.cursor).normalized();
-        let mut stdout = stdout();
+    // fn draw_line(
+    //     &self,
+    //     line: impl AsRef<str>,
+    //     absolute_ln: usize,
+    //     byte_offset: &mut usize,
+    // ) -> Result<()> {
+    //     let line = line.as_ref();
+    //     let selection = Selection::from(&self.cursor).normalized();
+    //     let mut stdout = &self.viewport.terminal;
 
-        let line_in_highlight_bounds =
-            absolute_ln >= selection.start.line && absolute_ln < selection.end.line;
-        let highlight_whole_line = (self.mode.is_visual_line() && line_in_highlight_bounds)
-            || absolute_ln > selection.start.line
-                && (absolute_ln < selection.end.line.saturating_sub(1) && self.mode.is_visual());
+    //     let line_in_highlight_bounds =
+    //         absolute_ln >= selection.start.line && absolute_ln < selection.end.line;
+    //     let highlight_whole_line = (self.mode.is_visual_line() && line_in_highlight_bounds)
+    //         || absolute_ln > selection.start.line
+    //             && (absolute_ln < selection.end.line.saturating_sub(1) && self.mode.is_visual());
 
-        if highlight_whole_line {
-            crossterm::execute!(
-                stdout,
-                SetBackgroundColor(Color::White),
-                SetForegroundColor(Color::Black)
-            )?;
-            write!(stdout, "{}\r", line)?;
-            crossterm::execute!(stdout, ResetColor)?;
-        } else if self.mode.is_visual() && line_in_highlight_bounds {
-            let start_col = if absolute_ln == selection.start.line {
-                selection.start.col
-            } else {
-                0
-            };
-            let end_col = if absolute_ln == selection.end.line {
-                selection.end.col
-            } else {
-                line.len()
-            };
+    //     if highlight_whole_line {
+    //         crossterm::execute!(
+    //             stdout,
+    //             SetBackgroundColor(Color::White),
+    //             SetForegroundColor(Color::Black)
+    //         )?;
+    //         write!(stdout, "{}\r", line)?;
+    //         crossterm::execute!(stdout, ResetColor)?;
+    //     } else if self.mode.is_visual() && line_in_highlight_bounds {
+    //         let start_col = if absolute_ln == selection.start.line {
+    //             selection.start.col
+    //         } else {
+    //             0
+    //         };
+    //         let end_col = if absolute_ln == selection.end.line {
+    //             selection.end.col
+    //         } else {
+    //             line.len()
+    //         };
 
-            write!(stdout, "{}", &line[..start_col])?;
+    //         write!(stdout, "{}", &line[..start_col])?;
 
-            crossterm::execute!(
-                stdout,
-                SetBackgroundColor(Color::White),
-                SetForegroundColor(Color::Black)
-            )?;
-            write!(stdout, "{}", &line[start_col..end_col])?;
-            crossterm::execute!(stdout, ResetColor)?;
+    //         crossterm::execute!(
+    //             stdout,
+    //             SetBackgroundColor(Color::White),
+    //             SetForegroundColor(Color::Black)
+    //         )?;
+    //         write!(stdout, "{}", &line[start_col..end_col])?;
+    //         crossterm::execute!(stdout, ResetColor)?;
 
-            // Print part after selection
-            write!(stdout, "{}\r", &line[end_col..])?;
-        } else {
-            write!(stdout, "{}\r", line)?;
-        }
+    //         // Print part after selection
+    //         write!(stdout, "{}\r", &line[end_col..])?;
+    //     } else {
+    //         write!(stdout, "{}\r", line)?;
+    //     }
 
-        writeln!(stdout)?;
-        Ok(())
-    }
+    //     writeln!(stdout)?;
+    //     Ok(())
+    // }
 
-    fn create_line_numbers(&self, stdout: &mut Stdout, line_number: usize) -> Result<()> {
-        crossterm::execute!(stdout, style::SetForegroundColor(style::Color::Green))?;
+    fn create_line_numbers(&mut self, line_number: usize) -> Result<()> {
+        crossterm::execute!(
+            self.viewport.terminal,
+            style::SetForegroundColor(style::Color::Green)
+        )?;
         let rel_line_number = (line_number as i64 - self.pos().line as i64 - 1).abs();
         let line_number = if rel_line_number == 0 {
             line_number as i64
@@ -547,7 +550,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             width = LINE_NUMBER_RESERVED_COLUMNS,
             separator = " ".repeat(LINE_NUMBER_SEPARATOR_EMPTY_COLUMNS)
         );
-        crossterm::execute!(stdout, ResetColor)?;
+        crossterm::execute!(self.viewport.terminal, ResetColor)?;
         Ok(())
     }
 
@@ -555,8 +558,8 @@ impl<Buff: TextBuffer> Editor<Buff> {
     /// the bounds
     pub(crate) fn control_view_window(&mut self) {
         let current_line = self.pos().line;
-        let top_line = self.view_window.topleft.line;
-        let bot_line = self.view_window.bottomright().line;
+        let top_line = self.viewport.topleft.line;
+        let bot_line = self.viewport.bottomright().line;
 
         // Adjusting by one done to prevent centering on cursor bumps
         let cursor_out_of_bounds =
@@ -570,11 +573,11 @@ impl<Buff: TextBuffer> Editor<Buff> {
             > bot_line - WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS - BAR_VERT_SPACE as usize;
 
         if cursor_out_of_bounds {
-            self.view_window.center(self.cursor.pos)
+            self.viewport.center(self.cursor.pos)
         } else if cursor_less_than_proximity_from_top && main_cursor_more_than_proximity {
-            self.view_window.move_up(1)
+            self.viewport.move_up(1)
         } else if cursor_less_than_proximity_from_bot {
-            self.view_window.move_down(1)
+            self.viewport.move_down(1)
         }
     }
 
@@ -587,34 +590,23 @@ impl<Buff: TextBuffer> Editor<Buff> {
     ///
     /// # Errors
     /// This function can return an error if the terminal cursor movement operation fails.
-    pub fn move_cursor(&self) {
-        let cursor = self.view_window.view_cursor(self.pos());
+    pub fn move_cursor(&mut self) {
+        let cursor = self.viewport.view_cursor(self.pos());
         #[allow(clippy::cast_possible_truncation)]
         let _ = crossterm::execute!(
-            stdout(),
+            self.viewport.terminal,
             crossterm::cursor::MoveTo(cursor.col as u16, cursor.line as u16 + 1)
         );
     }
 
-    fn move_command_cursor(&self, term_size: u16) {
+    fn move_command_cursor(&mut self, term_size: u16) {
         let _ = crossterm::execute!(
-            stdout(),
+            self.viewport.terminal,
             crossterm::cursor::MoveTo(
                 u16::try_from(self.cursor.col())
                     .expect("Column location lower than 0 or higher than 65356 is invalid"),
                 term_size - (NOTIFICATION_BAR_Y_LOCATION)
             )
-        );
-    }
-}
-
-impl<Buff: TextBuffer> Drop for Editor<Buff> {
-    fn drop(&mut self) {
-        let _ = terminal::disable_raw_mode();
-        let _ = crossterm::execute!(
-            stdout(),
-            terminal::Clear(ClearType::All),
-            crossterm::terminal::LeaveAlternateScreen
         );
     }
 }

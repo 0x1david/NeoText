@@ -1,18 +1,28 @@
+use crossterm::execute;
+
 use crate::{editor::LEFT_RESERVED_COLUMNS, LineCol};
 
 const BAR_GAP: u16 = 2;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub struct Viewport {
+    pub terminal: std::io::Stdout,
     pub topleft: LineCol,
     pub terminal_dimensions: LineCol,
 }
 
 impl Default for Viewport {
     fn default() -> Self {
+        let mut terminal = std::io::stdout();
+        let _ = execute!(
+            terminal,
+            crossterm::terminal::EnterAlternateScreen,
+            crossterm::terminal::DisableLineWrap
+        );
         Self {
             topleft: LineCol { line: 0, col: 0 },
             terminal_dimensions: Self::get_new_dimensions(),
+            terminal,
         }
     }
 }
@@ -57,5 +67,16 @@ impl Viewport {
         let mut lc = self.topleft + self.terminal_dimensions;
         lc.line -= BAR_GAP as usize;
         lc
+    }
+}
+
+impl Drop for Viewport {
+    fn drop(&mut self) {
+        let _raw = crossterm::terminal::disable_raw_mode();
+        let _exe = crossterm::execute!(
+            self.terminal,
+            crossterm::terminal::Clear(crossterm::terminal::ClearType::All),
+            crossterm::terminal::LeaveAlternateScreen
+        );
     }
 }

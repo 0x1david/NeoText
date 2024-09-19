@@ -22,10 +22,13 @@ impl<Buff: TextBuffer> Editor<Buff> {
         prev_char: Option<char>,
     ) -> Result<()> {
         self.draw_lines()?;
-        draw_bar(&INFO_BAR, |term_width, _| {
-            get_info_bar_content(term_width, &self.mode, self.pos())
+        let pos = self.pos();
+        draw_bar(&mut self.viewport.terminal, &INFO_BAR, |term_width, _| {
+            get_info_bar_content(term_width, &self.mode, pos)
         })?;
-        draw_bar(&NOTIFICATION_BAR, |_, _| get_notif_bar_content())?;
+        draw_bar(&mut self.viewport.terminal, &NOTIFICATION_BAR, |_, _| {
+            get_notif_bar_content()
+        })?;
         self.move_cursor();
         self.force_within_bounds();
 
@@ -118,14 +121,14 @@ impl<Buff: TextBuffer> Editor<Buff> {
                 'd' => {
                     repeat! {{
                         self.cursor.jump_down(SCROLL_JUMP_DISTANCE, self.buffer.max_line());
-                        self.view_window.center(self.pos());
+                        self.viewport.center(self.pos());
                     }; carry_over
                     }
                 }
                 'u' => {
                     repeat! {{
                         self.cursor.jump_up(SCROLL_JUMP_DISTANCE);
-                        self.view_window.center(self.pos());
+                        self.viewport.center(self.pos());
                     }; carry_over
                     }
                 }

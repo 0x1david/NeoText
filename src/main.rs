@@ -25,19 +25,10 @@
 // Bugs To Fix:
 //      Constant crashing
 #![allow(dead_code, clippy::cast_possible_wrap)]
-use std::{
-    fs::OpenOptions,
-    io::{stdout, Read},
-    panic,
-    path::PathBuf,
-};
+use std::{fs::OpenOptions, io::Read, panic, path::PathBuf};
 
 mod error;
 use buffer::VecBuffer;
-use crossterm::{
-    execute,
-    terminal::{disable_raw_mode, DisableLineWrap, EnterAlternateScreen, LeaveAlternateScreen},
-};
 use editor::Editor;
 use error::{Error, Result};
 
@@ -76,8 +67,6 @@ fn main() {
     setup_panic();
     let cli = Cli::parse();
     setup_tracing(cli.debug);
-
-    let _ = execute!(stdout(), EnterAlternateScreen, DisableLineWrap);
 
     let mut instance = initialize_editor(&cli);
 
@@ -127,15 +116,6 @@ pub fn new_from_file(p: &PathBuf) -> Editor<VecBuffer> {
 
     let buf = VecBuffer::new(content.lines().map(String::from).collect());
     Editor::new(buf, false)
-}
-
-/// Set up panic hook to write to stderr (main screen)
-fn custom_panic() {
-    panic::set_hook(Box::new(|panic_info| {
-        let _ = disable_raw_mode();
-        let _ = execute!(std::io::stderr(), LeaveAlternateScreen);
-        eprintln!("Panic occurred: {:?}", panic_info);
-    }));
 }
 
 fn setup_tracing(debug: bool) {

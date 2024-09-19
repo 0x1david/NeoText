@@ -27,8 +27,7 @@ macro_rules! repeat {
         }
     }};
 }
-pub fn draw_ascii_art() -> Result<()> {
-    let mut stdout = stdout();
+pub fn draw_ascii_art(term: &mut std::io::Stdout) -> Result<()> {
     let (term_width, term_height) = terminal::size()?;
     let art_lines: Vec<&str> = ASCII_INTRODUCTION_SCREEN2.lines().collect();
 
@@ -48,7 +47,7 @@ pub fn draw_ascii_art() -> Result<()> {
         let padding = " ".repeat(art_width - visible_line_length);
         #[allow(clippy::cast_possible_truncation)]
         execute!(
-            stdout,
+            term,
             cursor::MoveTo(start_x as u16, (start_y + i) as u16),
             style::SetForegroundColor(style::Color::Cyan),
             style::Print(line),
