@@ -11,6 +11,7 @@ pub const NOTIFICATION_BAR_Y_LOCATION: u16 = 0;
 pub const INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE: u16 = 1;
 pub const INFO_BAR_MODAL_INDICATOR_X_LOCATION: u16 = 1;
 pub const NOTIFICATION_BAR_TEXT_X_LOCATION: u16 = 2;
+pub const BAR_VERT_SPACE: u16 = 2;
 
 // pub struct Theme {
 //     background: Color,

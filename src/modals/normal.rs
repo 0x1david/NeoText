@@ -118,14 +118,14 @@ impl<Buff: TextBuffer> Editor<Buff> {
                 'd' => {
                     repeat! {{
                         self.cursor.jump_down(SCROLL_JUMP_DISTANCE, self.buffer.max_line());
-                        self.center_view_window();
+                        self.view_window.center(self.pos());
                     }; carry_over
                     }
                 }
                 'u' => {
                     repeat! {{
                         self.cursor.jump_up(SCROLL_JUMP_DISTANCE);
-                        self.center_view_window();
+                        self.view_window.center(self.pos());
                     }; carry_over
                     }
                 }

@@ -1,7 +1,7 @@
 #![allow(clippy::match_wild_err_arm)]
 use crate::bars::{
-    draw_bar, get_info_bar_content, get_notif_bar_content, COMMAND_BAR, INFO_BAR, NOTIFICATION_BAR,
-    NOTIFICATION_BAR_Y_LOCATION,
+    draw_bar, get_info_bar_content, get_notif_bar_content, BAR_VERT_SPACE, COMMAND_BAR, INFO_BAR,
+    NOTIFICATION_BAR, NOTIFICATION_BAR_Y_LOCATION,
 };
 use crate::buffer::TextBuffer;
 use crate::copy_register::CopyRegister;
@@ -23,7 +23,7 @@ use std::{
 };
 
 const MAX_HISTORY: usize = 50;
-const WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS: usize = 8;
+const WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS: usize = 6;
 pub const LINE_NUMBER_SEPARATOR_EMPTY_COLUMNS: usize = 4;
 pub const LINE_NUMBER_RESERVED_COLUMNS: usize = 5;
 pub const LEFT_RESERVED_COLUMNS: usize =
@@ -112,7 +112,6 @@ impl<Buff: TextBuffer> Editor<Buff> {
     /// If the cursor is in an invalid position, applies a cursor movement that results in a valid position within the buffer bounds.
     pub fn force_within_bounds(&mut self) {
         let original_pos = self.cursor.previous_pos;
-        notif_bar!(self.buffer.max_line(););
         if self.pos().line > self.buffer.max_line() {
             self.cursor.pos = original_pos;
             return;
@@ -184,9 +183,12 @@ impl<Buff: TextBuffer> Editor<Buff> {
             let empty_buffer = self.buffer.is_empty()
                 || self.buffer.line(0).is_err()
                 || self.buffer.line(0).unwrap().is_empty();
+
             if !empty_buffer {
                 self.force_within_bounds();
                 self.control_view_window();
+            } else {
+                notif_bar!("empty buffer");
             }
             match self.mode {
                 Modal::Command | Modal::Find(_) => {}
@@ -549,10 +551,6 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
 
-    pub(crate) fn center_view_window(&mut self) {
-        self.view_window.center(self.cursor.pos)
-    }
-
     /// Makes sure the cursor is in bounds of the view window, if it isnt' follow the cursor with
     /// the bounds
     pub(crate) fn control_view_window(&mut self) {
@@ -564,13 +562,15 @@ impl<Buff: TextBuffer> Editor<Buff> {
         let cursor_out_of_bounds =
             current_line < top_line.saturating_sub(1) || current_line > bot_line + 1;
 
-        let cursor_less_than_proximity_from_top = current_line < top_line;
+        let cursor_less_than_proximity_from_top =
+            current_line < (top_line + WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS);
         let main_cursor_more_than_proximity =
             current_line > WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS;
-        let cursor_less_than_proximity_from_bot = current_line > bot_line;
+        let cursor_less_than_proximity_from_bot = current_line
+            > bot_line - WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS - BAR_VERT_SPACE as usize;
 
         if cursor_out_of_bounds {
-            self.center_view_window();
+            self.view_window.center(self.cursor.pos)
         } else if cursor_less_than_proximity_from_top && main_cursor_more_than_proximity {
             self.view_window.move_up(1)
         } else if cursor_less_than_proximity_from_bot {

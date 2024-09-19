@@ -416,7 +416,7 @@ impl TextBuffer for VecBuffer {
         self.get_buffer().len()
     }
     fn line(&self, line_number: usize) -> Result<&str> {
-        if line_number > 0 && line_number <= self.line_count() {
+        if line_number >= 0 && line_number <= self.line_count() {
             Ok(self
                 .get_buffer()
                 .get(line_number)
