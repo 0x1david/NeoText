@@ -17,7 +17,7 @@ pub enum Error {
     },
     NowhereToGo,
     ImATeacup,
-
+    ParsingError(String),
     #[from]
     Io(std::io::Error),
 }

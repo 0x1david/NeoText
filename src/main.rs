@@ -38,6 +38,7 @@ mod copy_register;
 mod cursor;
 mod editor;
 mod highlighter;
+mod lsp;
 mod modals;
 mod theme;
 mod utils;
