@@ -3,6 +3,9 @@ use crate::{Error, Result};
 const CRLF: &str = r"\r\n";
 const CRLF_BYTE_LEN: usize = CRLF.len();
 
+type LSPObject<'a> = &'a [(&'a str, LSPAny<'a>)];
+type LSPArray<'a> = &'a [usize];
+
 struct LspParser<'pl> {
     payload: &'pl str,
     start_pointer: usize,
@@ -14,13 +17,57 @@ pub struct Header<'pl> {
     pub content_length: u16,
     pub content_type: Option<&'pl str>,
 }
+pub enum Body<'pl> {
+    Request(Request<'pl>),
+    Response(Response<'pl>),
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Request<'pl> {
+    jsonrpc: &'pl str,
+    id: Option<usize>,
+    method: &'pl str,
+    // Only Object or Array
+    params: Params<'pl>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Response<'pl> {
+    jsonrpc: &'pl str,
+    id: Option<usize>,
+    result: &'pl str,
+    error: Option<&'pl str>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LSPAny<'pl> {
+    Object(&'pl [(&'pl str, LSPAny<'pl>)]),
+    Array(&'pl [usize]),
+    String(&'pl str),
+    Integer(&'pl i64),
+    UInteger(&'pl u64),
+    // Decimal is interpreted as a str but parsable as a float,
+    // to avoid Eq issues
+    Decimal(&'pl str),
+    Boolean(bool),
+    None,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Params<'pl> {
+    Named(LSPObject<'pl>),
+    Positional(LSPArray<'pl>),
+}
 
 struct ContentBuilder<'pl> {
     header: Option<Header<'pl>>,
+    body: Option<Body<'pl>>,
 }
 impl<'pl> ContentBuilder<'pl> {
     pub fn new() -> Self {
-        Self { header: None }
+        Self {
+            header: None,
+            body: None,
+        }
     }
     pub fn add_header(mut self, content_length: u16, content_type: Option<&'pl str>) -> Self {
         self.header = Some(Header {
