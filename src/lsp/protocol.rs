@@ -1,14 +1,18 @@
 use crate::{Error, Result};
 
+const CRLF: &str = r"\r\n";
+const CRLF_BYTE_LEN: usize = CRLF.len();
+
 struct LspParser<'pl> {
     payload: &'pl str,
     start_pointer: usize,
     end_pointer: usize,
 }
 
-struct Header<'pl> {
-    content_length: u16,
-    content_type: Option<&'pl str>,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Header<'pl> {
+    pub content_length: u16,
+    pub content_type: Option<&'pl str>,
 }
 
 struct ContentBuilder<'pl> {
@@ -23,7 +27,7 @@ impl<'pl> ContentBuilder<'pl> {
             content_length,
             content_type,
         });
-        return self;
+        self
     }
     pub fn build(self) -> Content<'pl> {
         Content {
@@ -34,8 +38,9 @@ impl<'pl> ContentBuilder<'pl> {
     }
 }
 
-struct Content<'pl> {
-    header: Header<'pl>,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Content<'pl> {
+    pub header: Header<'pl>,
 }
 
 impl<'pl> LspParser<'pl> {
@@ -48,42 +53,55 @@ impl<'pl> LspParser<'pl> {
             end_pointer: 0,
         }
     }
-    fn parse(&self) -> Content {
-        let content = ContentBuilder::new();
-        let content = self.parse_header(content);
+    fn parse(&mut self) -> Result<Content> {
+        let mut content = ContentBuilder::new();
+        content = self.parse_header(content)?;
+        Ok(content.build())
     }
     fn parse_header(&mut self, content: ContentBuilder<'pl>) -> Result<ContentBuilder<'pl>> {
         let mut content_length = 0;
         let mut content_type = None;
 
-        while !self.payload[self.end_pointer + 1..].starts_with("\r\n") {
-            self.end_pointer = self.payload.find(':').ok_or(Error::ParsingError(
-                "Couldn't find `:` between name and value in header of the payload.".to_string(),
-            ))?;
+        while !self.payload[self.end_pointer..].starts_with(CRLF) {
+            self.end_pointer = self.start_pointer
+                + self.payload[self.start_pointer..]
+                    .find(':')
+                    .ok_or(Error::ParsingError(
+                        "Couldn't find `:` between name and value in header of the payload."
+                            .to_string(),
+                    ))?;
             let name = &self.payload[self.start_pointer..self.end_pointer];
+            self.end_pointer += 1;
             self.start_pointer = self.end_pointer;
 
-            self.end_pointer = self.payload.find("\r\n").ok_or(Error::ParsingError(
-                "Couldn't find `\r\n` delimiter after a header section of the payload.".to_string(),
-            ))?;
+            self.end_pointer = self.start_pointer
+                + self.payload[self.start_pointer..]
+                    .find(CRLF)
+                    .ok_or(Error::ParsingError(
+                        "Couldn't find `\r\n` delimiter after a header section of the payload."
+                            .to_string(),
+                    ))?;
+
             let value = &self.payload[self.start_pointer..self.end_pointer];
             self.start_pointer = self.end_pointer;
 
             match name {
-                "content-length" => {
+                "Content-Length" => {
                     content_length = value.parse::<u16>().map_err(|e| {
                         Error::ParsingError(format!(
-                            "Failed parsing the content-length value as a u16: {e}"
+                            "Failed parsing the content-length value: `{value}` as a u16: {e}"
                         ))
                     })?
                 }
-                "content-type" => content_type = Some(value),
-                _ => Err(Error::ParsingError("Unknown header type".to_string()))?,
+                "Content-Type" => content_type = Some(value),
+                _ => Err(Error::ParsingError(format!("Unknown header type: {name}")))?,
             };
+            self.start_pointer += CRLF_BYTE_LEN;
+            self.end_pointer += CRLF_BYTE_LEN;
         }
         if content_length == 0 {
             return Err(Error::ParsingError(
-                "Content-length specified as zero isn't allowed".to_string(),
+                "Content-length must be specified and higher than zero.".to_string(),
             ));
         };
 
@@ -94,4 +112,44 @@ impl<'pl> LspParser<'pl> {
 enum HeaderType {
     ContentLength,
     ContentType,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn create_test_bytes(text: &str) -> Vec<u8> {
+        text.chars()
+            .flat_map(|c| match c {
+                '\r' => vec![b'\\', b'r'],
+                '\n' => vec![b'\\', b'n'],
+                _ => vec![c as u8],
+            })
+            .collect()
+    }
+    #[test]
+    fn parse_buffer_header() {
+        let bytes =
+            create_test_bytes("Content-Length:40\r\nContent-Type:something\r\n\r\nDontparse\n");
+        let mut parser = LspParser::new(&bytes);
+        let content = parser.parse().unwrap();
+        assert_eq!(content.header.content_type.unwrap(), "something");
+        assert_eq!(content.header.content_length, 40);
+    }
+
+    #[test]
+    fn parse_buffer_header_length_only() {
+        let bytes = create_test_bytes("Content-Length:40\r\n\r\nDontparse\n");
+        let mut parser = LspParser::new(&bytes);
+        let content = parser.parse().unwrap();
+        assert!(content.header.content_type.is_none());
+        assert_eq!(content.header.content_length, 40);
+    }
+
+    #[test]
+    fn parse_buffer_header_invalid_no_content_length() {
+        let bytes = create_test_bytes("Content-Type:something\r\n\r\nDontparse\n");
+        let mut parser = LspParser::new(&bytes);
+        let content = parser.parse();
+        assert!(content.is_err());
+    }
 }
