@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{Error, Result};
 use serde::{Deserialize, Serialize};
 
@@ -17,10 +19,32 @@ pub struct Header<'pl> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum Body {
     Request(Request),
     Response(Response),
 }
+
+impl Default for Body {
+    fn default() -> Self {
+        Self::Request(Request::default())
+    }
+}
+
+// {
+// "jsonrpc": "2.0",
+// "id": 1,
+// "method": "textDocument/completion",
+// "params": {
+//     "textDocument": {
+//         "uri": "file:///path/to/file.rs"
+//     },
+//     "position": {
+//         "line": 10,
+//         "character": 15
+//     }
+// }
+// }"#;
 impl Body {
     fn is_response(&self) -> bool {
         matches!(self, Body::Response(_))
@@ -53,6 +77,16 @@ pub struct Request {
     // Only Object or Array Param is allowed
     params: Params,
 }
+impl Default for Request {
+    fn default() -> Self {
+        Self {
+            jsonrpc: "2.0".to_string(),
+            id: Some(1),
+            method: "textDocument/completion".to_string(),
+            params: Params::default(),
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Response {
@@ -62,17 +96,18 @@ pub struct Response {
     error: Option<String>,
 }
 
-type LSPObject = Vec<(String, LSPAny)>;
+type LSPObject = HashMap<String, LSPAny>;
 
 type LSPArray = Vec<usize>;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum LSPAny {
     Object(LSPObject),
     Array(LSPArray),
     String(String),
-    Integer(i64),
-    UInteger(u64),
+    Integer(i32),
+    UInteger(u32),
     // Decimal is interpreted as a str but parsable as a float,
     // to avoid Eq issues
     Decimal(String),
@@ -81,9 +116,37 @@ pub enum LSPAny {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
 enum Params {
     Named(LSPObject),
     Positional(LSPArray),
+}
+impl Default for Params {
+    fn default() -> Self {
+        let mut params: LSPObject = HashMap::new();
+
+        //     "textDocument": {
+        //         "uri": "file:///path/to/file.rs"
+        //     },
+        let mut text_document: LSPObject = HashMap::new();
+        text_document.insert(
+            "uri".to_string(),
+            LSPAny::String("file:///path/to/file.rs".to_string()),
+        );
+
+        //     "position": {
+        //         "line": 10,
+        //         "character": 15
+        //     }
+        let mut position: LSPObject = HashMap::new();
+        position.insert("line".to_string(), LSPAny::Integer(10));
+        position.insert("character".to_string(), LSPAny::Integer(15));
+
+        params.insert("textDocument".to_string(), LSPAny::Object(text_document));
+        params.insert("position".to_string(), LSPAny::Object(position));
+
+        Params::Named(params)
+    }
 }
 
 struct ContentBuilder<'pl> {
@@ -141,7 +204,9 @@ impl<'pl> LspParser<'pl> {
         Ok(content.build())
     }
     fn parse_body(&mut self, content: ContentBuilder<'pl>) -> Result<ContentBuilder<'pl>> {
-        let body_str = &self.payload[self.start_pointer..];
+        let length = content.header.clone().unwrap().content_length;
+
+        let body_str = &self.payload[self.start_pointer..self.start_pointer + length as usize];
         let body: Body = serde_json::from_str(body_str).map_err(|e| {
             Error::ParsingError(format!("Deserializing body with serde failed: {e}"))
         })?;
@@ -194,6 +259,8 @@ impl<'pl> LspParser<'pl> {
             ));
         };
 
+        self.start_pointer += CRLF_BYTE_LEN;
+        self.end_pointer += CRLF_BYTE_LEN;
         Ok(content.add_header(content_length, content_type))
     }
 }
@@ -215,7 +282,6 @@ mod tests {
             })
             .collect()
     }
-
     #[test]
     fn parse_buffer_header() {
         let bytes =
@@ -250,8 +316,9 @@ mod tests {
 
     #[test]
     fn parse_buffer_body() {
-        let header = "Content-Length:163\r\nContent-Type:something\r\n\r\n";
-        let body = r#"{"jsonrpc":"2.0","id":1,"method":"textDocument/completion","params":{"textDocument":{"uri":"file:///path/to/file.rs"},"position":{"line":10,"character":15}}}"#;
+        let header = "Content-Length:157\r\nContent-Type:something\r\n\r\n";
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"textDocument/completion\",\"params\":{\"textDocument\":{\"uri\":\"file:///path/to/file.rs\"},\"position\":{\"line\":10,\"character\":15}}}".trim();
+
         let payload = format!("{}{}", header, body);
         let bytes = create_test_bytes(&payload);
         let mut content_builder = ContentBuilder::new();
@@ -260,5 +327,6 @@ mod tests {
         content_builder = parser.parse_body(content_builder).unwrap();
         let body = content_builder.body.unwrap();
         assert!(body.is_request());
+        assert_eq!(Body::default(), body)
     }
 }
