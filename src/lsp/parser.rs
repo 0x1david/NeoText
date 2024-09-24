@@ -23,6 +23,7 @@ pub struct Header<'pl> {
 pub enum Body {
     Request(Request),
     Response(Response),
+    Notification(Notification),
 }
 
 impl Default for Body {
@@ -45,11 +46,15 @@ impl Default for Body {
 //     }
 // }
 // }"#;
+
 impl Body {
     fn is_response(&self) -> bool {
         matches!(self, Body::Response(_))
     }
     fn is_request(&self) -> bool {
+        matches!(self, Body::Request(_))
+    }
+    fn is_notification(&self) -> bool {
         matches!(self, Body::Request(_))
     }
     fn get_response(self) -> Result<Response> {
@@ -70,6 +75,13 @@ impl Body {
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Notification {
+    method: String,
+    // Only Object or Array Param is allowed
+    params: Params,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Request {
     jsonrpc: String,
     id: Option<usize>,
@@ -88,6 +100,29 @@ impl Default for Request {
     }
 }
 
+impl Request {
+    fn initialization_req(initializer_params: Params) -> Self {
+        Self {
+            jsonrpc: "2.0".to_string(),
+            id: Some(1),
+            method: "initialize".to_string(),
+            params: initializer_params,
+        }
+    }
+}
+
+macro_rules! insert {
+    ($hm:ident,$key:expr,$value: expr) => {
+        $hm.insert($key.to_string(), $value.into())
+    };
+}
+
+pub fn initialize_params() -> Params {
+    let mut params = HashMap::new();
+    insert!(params, "processId", 1);
+    Params::Named(params)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Response {
     jsonrpc: String,
@@ -100,7 +135,7 @@ type LSPObject = HashMap<String, LSPAny>;
 
 type LSPArray = Vec<usize>;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum LSPAny {
     Object(LSPObject),
@@ -110,14 +145,61 @@ pub enum LSPAny {
     UInteger(u32),
     // Decimal is interpreted as a str but parsable as a float,
     // to avoid Eq issues
-    Decimal(String),
+    Decimal(f32),
     Boolean(bool),
     None,
 }
+impl PartialEq for LSPAny {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (LSPAny::Object(a), LSPAny::Object(b)) => a == b,
+            (LSPAny::Array(a), LSPAny::Array(b)) => a == b,
+            (LSPAny::String(a), LSPAny::String(b)) => a == b,
+            (LSPAny::Integer(a), LSPAny::Integer(b)) => a == b,
+            (LSPAny::UInteger(a), LSPAny::UInteger(b)) => a == b,
+            (LSPAny::Decimal(a), LSPAny::Decimal(b)) => {
+                if a.is_nan() && b.is_nan() {
+                    true
+                } else {
+                    a == b
+                }
+            }
+            (LSPAny::Boolean(a), LSPAny::Boolean(b)) => a == b,
+            (LSPAny::None, LSPAny::None) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for LSPAny {}
+
+/// Create an Implementation of From<ty> for LSPAny
+macro_rules! from_any {
+    ($ident:ident, $ty:ty) => {
+        impl From<$ty> for LSPAny {
+            fn from(value: $ty) -> Self {
+                LSPAny::$ident(value.into())
+            }
+        }
+    };
+}
+
+from_any!(String, String);
+from_any!(String, &str);
+from_any!(Integer, i32);
+from_any!(Integer, i16);
+from_any!(Integer, i8);
+from_any!(UInteger, u32);
+from_any!(UInteger, u16);
+from_any!(UInteger, u8);
+from_any!(Decimal, f32);
+from_any!(Boolean, bool);
+from_any!(Object, LSPObject);
+from_any!(Array, LSPArray);
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
-enum Params {
+pub enum Params {
     Named(LSPObject),
     Positional(LSPArray),
 }
@@ -129,21 +211,18 @@ impl Default for Params {
         //         "uri": "file:///path/to/file.rs"
         //     },
         let mut text_document: LSPObject = HashMap::new();
-        text_document.insert(
-            "uri".to_string(),
-            LSPAny::String("file:///path/to/file.rs".to_string()),
-        );
+        insert!(text_document, "uri", "file:///path/to/file.rs");
 
         //     "position": {
         //         "line": 10,
         //         "character": 15
         //     }
         let mut position: LSPObject = HashMap::new();
-        position.insert("line".to_string(), LSPAny::Integer(10));
-        position.insert("character".to_string(), LSPAny::Integer(15));
+        insert!(position, "line", 10);
+        insert!(position, "character", 15);
 
-        params.insert("textDocument".to_string(), LSPAny::Object(text_document));
-        params.insert("position".to_string(), LSPAny::Object(position));
+        insert!(params, "textDocument", text_document);
+        insert!(params, "position", position);
 
         Params::Named(params)
     }
