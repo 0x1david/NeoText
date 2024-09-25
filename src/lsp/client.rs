@@ -1,3 +1,4 @@
+use super::parser::initialize_params
 pub struct LSPClient {}
 
 impl LSPClient {
@@ -11,7 +12,7 @@ impl LSPClient {
     fn announce_capabilities() {}
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#initialize
     fn initialize() {}
-    fn send_request() {}
+    fn send_request(self.dbg!) -> Result<()> {}
     fn send_notification() {}
 }
 enum LSPAction {}
