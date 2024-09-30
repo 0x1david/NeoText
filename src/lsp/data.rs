@@ -100,7 +100,7 @@ impl Body {
     fn is_notification(&self) -> bool {
         matches!(self, Body::Request(_))
     }
-    fn get_response(self) -> Result<Response> {
+    pub fn get_response(self) -> Result<Response> {
         match self {
             Self::Response(r) => Ok(r),
             _ => Err(Error::ParsingError(

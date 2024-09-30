@@ -29,7 +29,7 @@ use std::{fs::OpenOptions, io::Read, panic, path::PathBuf};
 
 mod error;
 use buffer::VecBuffer;
-use editor::Editor;
+use editor::{Editor, FileType};
 use error::{Error, Result};
 
 mod bars;
@@ -46,9 +46,12 @@ mod viewport;
 use clap::Parser;
 mod common;
 pub use common::*;
+use tokio::sync::mpsc::{Receiver, Sender};
 pub use tracing::{error, info, span, warn, Instrument};
 pub use tracing_subscriber::{filter::EnvFilter, fmt::Subscriber, prelude::*, Layer};
 pub use tracing_tree::HierarchicalLayer;
+
+const DEFAULT_CHANNEL_CAPACITY: usize = 50;
 
 #[derive(Parser, Debug)]
 #[command(name = "neotext")]
@@ -64,12 +67,15 @@ struct Cli {
     #[arg(default_value = "")]
     file: String,
 }
-fn main() {
+async fn main() {
     setup_panic();
     let cli = Cli::parse();
     setup_tracing(cli.debug);
 
-    let mut instance = initialize_editor(&cli);
+    let (s, r) = tokio::sync::mpsc::channel(DEFAULT_CHANNEL_CAPACITY);
+
+    let language_server = lsp::client::LSPClient::new(s);
+    let mut instance = initialize_editor(&cli, r);
 
     match instance.run_main_loop() {
         Err(Error::ExitCall) => (),
@@ -80,13 +86,13 @@ fn main() {
     }
 }
 
-fn initialize_editor(cli: &Cli) -> Editor<VecBuffer> {
+fn initialize_editor(cli: &Cli, sender: Receiver<lsp::Body>) -> Editor<VecBuffer> {
     if cli.test {
         return new_from_file(&"./test_file.ntxt".into());
     }
 
     if cli.file.is_empty() {
-        editor::Editor::new(VecBuffer::new(vec![" ".to_string()]), true)
+        editor::Editor::new(VecBuffer::new(vec![" ".to_string()]), true, "")
     } else {
         new_from_file(&cli.file.clone().into())
     }
@@ -116,7 +122,8 @@ pub fn new_from_file(p: &PathBuf) -> Editor<VecBuffer> {
     let _ = file.read_to_string(&mut content);
 
     let buf = VecBuffer::new(content.lines().map(String::from).collect());
-    Editor::new(buf, false)
+    let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("");
+    Editor::new(buf, false, ext)
 }
 
 fn setup_tracing(debug: bool) {
