@@ -7,6 +7,7 @@ use crate::buffer::TextBuffer;
 use crate::copy_register::CopyRegister;
 use crate::cursor::{Cursor, Selection};
 use crate::highlighter::{Highlighter, Style};
+use crate::lsp::client::LSPClient;
 use crate::modals::{FindMode, Modal};
 use crate::utils::draw_ascii_art;
 use crate::viewport::Viewport;
@@ -26,6 +27,22 @@ pub const LINE_NUMBER_RESERVED_COLUMNS: usize = 5;
 pub const LEFT_RESERVED_COLUMNS: usize =
     LINE_NUMBER_RESERVED_COLUMNS + LINE_NUMBER_RESERVED_COLUMNS;
 
+pub enum FileType {
+    Rust,
+    Python,
+    Unknown,
+}
+
+impl From<&str> for FileType {
+    fn from(value: &str) -> Self {
+        match value {
+            "rs" => FileType::Rust,
+            "py" => FileType::Python,
+            _ => FileType::Unknown,
+        }
+    }
+}
+
 /// The main editor is used as the main API for all commands
 pub struct Editor<Buff: TextBuffer> {
     /// In the first implementation I will start with Vec, for simplicity, fairly early to the dev
@@ -44,6 +61,8 @@ pub struct Editor<Buff: TextBuffer> {
     pub(crate) is_initial_launch: bool,
     pub(crate) copy_register: CopyRegister,
     highlighter: Highlighter,
+    filetype: FileType,
+    lsp: tokio::sync::mpsc::Receiver<crate::lsp::Body>,
 }
 
 impl<Buff: TextBuffer> Editor<Buff> {
@@ -54,7 +73,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     ///
     /// # Returns
     /// A new `MainEditor` instance initialized with the given buffer and default cursor position.
-    pub fn new(buffer: Buff, launch_without_target: bool) -> Self {
+    pub fn new(buffer: Buff, launch_without_target: bool, file_specifier: &str) -> Self {
         Self {
             highlighter: Highlighter::new(buffer.get_coalesced_bytes())
                 .expect("Tree sitter needs to parse."),
@@ -69,6 +88,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             viewport: Viewport::default(),
             is_initial_launch: launch_without_target,
             copy_register: CopyRegister::default(),
+            filetype: file_specifier.into(),
         }
     }
 

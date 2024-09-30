@@ -4,7 +4,7 @@ use crate::{Error, Result};
 const CRLF: &str = r"\r\n";
 const CRLF_BYTE_LEN: usize = CRLF.len();
 
-struct LspParser<'pl> {
+pub struct LspParser<'pl> {
     payload: &'pl str,
     start_pointer: usize,
     end_pointer: usize,
@@ -32,24 +32,20 @@ impl<'pl> ContentBuilder<'pl> {
         self.body = Some(body);
         self
     }
-    pub fn build(self) -> Content<'pl> {
+    pub fn build(self) -> Content {
         Content {
-            header: self
-                .header
-                .expect("Called build on a builder without a header"),
             body: self.body.expect("Called build on  abuilder without a body"),
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Content<'pl> {
-    pub header: Header<'pl>,
+pub struct Content {
     pub body: Body,
 }
 
 impl<'pl> LspParser<'pl> {
-    fn new(payload: &'pl [u8]) -> LspParser<'pl> {
+    pub fn new(payload: &'pl [u8]) -> LspParser<'pl> {
         let str_payload = &std::str::from_utf8(payload)
             .expect("According to spec LSP should be always utf-8 encoded.");
         LspParser {
@@ -58,7 +54,7 @@ impl<'pl> LspParser<'pl> {
             end_pointer: 0,
         }
     }
-    fn parse(&mut self) -> Result<Content> {
+    pub fn parse(&mut self) -> Result<Content> {
         let mut content = ContentBuilder::new();
         content = self.parse_header(content)?;
         content = self.parse_body(content)?;
