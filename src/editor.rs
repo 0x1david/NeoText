@@ -7,11 +7,10 @@ use crate::buffer::TextBuffer;
 use crate::copy_register::CopyRegister;
 use crate::cursor::{Cursor, Selection};
 use crate::highlighter::{Highlighter, Style};
-use crate::lsp::client::LSPClient;
 use crate::modals::{FindMode, Modal};
 use crate::utils::draw_ascii_art;
 use crate::viewport::Viewport;
-use crate::{get_debug_messages, notif_bar, Error, LineCol, Result};
+use crate::{get_debug_messages, lsp, notif_bar, Error, LineCol, Result};
 use crossterm::{
     event::{self, Event, KeyCode},
     style::{self, Color, ResetColor, SetBackgroundColor, SetForegroundColor},
@@ -19,6 +18,7 @@ use crossterm::{
 };
 use rangemap::RangeMap;
 use std::{collections::VecDeque, io::Write};
+use tokio::sync::mpsc::Receiver;
 
 const MAX_HISTORY: usize = 50;
 const WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS: usize = 6;
@@ -26,22 +26,6 @@ pub const LINE_NUMBER_SEPARATOR_EMPTY_COLUMNS: usize = 4;
 pub const LINE_NUMBER_RESERVED_COLUMNS: usize = 5;
 pub const LEFT_RESERVED_COLUMNS: usize =
     LINE_NUMBER_RESERVED_COLUMNS + LINE_NUMBER_RESERVED_COLUMNS;
-
-pub enum FileType {
-    Rust,
-    Python,
-    Unknown,
-}
-
-impl From<&str> for FileType {
-    fn from(value: &str) -> Self {
-        match value {
-            "rs" => FileType::Rust,
-            "py" => FileType::Python,
-            _ => FileType::Unknown,
-        }
-    }
-}
 
 /// The main editor is used as the main API for all commands
 pub struct Editor<Buff: TextBuffer> {
@@ -61,7 +45,6 @@ pub struct Editor<Buff: TextBuffer> {
     pub(crate) is_initial_launch: bool,
     pub(crate) copy_register: CopyRegister,
     highlighter: Highlighter,
-    filetype: FileType,
     lsp: tokio::sync::mpsc::Receiver<crate::lsp::Body>,
 }
 
@@ -73,7 +56,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     ///
     /// # Returns
     /// A new `MainEditor` instance initialized with the given buffer and default cursor position.
-    pub fn new(buffer: Buff, launch_without_target: bool, file_specifier: &str) -> Self {
+    pub fn new(buffer: Buff, launch_without_target: bool, receiver: Receiver<lsp::Body>) -> Self {
         Self {
             highlighter: Highlighter::new(buffer.get_coalesced_bytes())
                 .expect("Tree sitter needs to parse."),
@@ -88,7 +71,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             viewport: Viewport::default(),
             is_initial_launch: launch_without_target,
             copy_register: CopyRegister::default(),
-            filetype: file_specifier.into(),
+            lsp: receiver,
         }
     }
 
