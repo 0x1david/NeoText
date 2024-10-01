@@ -10,7 +10,7 @@ use crate::highlighter::{Highlighter, Style};
 use crate::modals::{FindMode, Modal};
 use crate::utils::draw_ascii_art;
 use crate::viewport::Viewport;
-use crate::{get_debug_messages, notif_bar, Error, LineCol, Result};
+use crate::{get_debug_messages, lsp, notif_bar, Error, LineCol, Result};
 use crossterm::{
     event::{self, Event, KeyCode},
     style::{self, Color, ResetColor, SetBackgroundColor, SetForegroundColor},
@@ -18,6 +18,7 @@ use crossterm::{
 };
 use rangemap::RangeMap;
 use std::{collections::VecDeque, io::Write};
+use tokio::sync::mpsc::Receiver;
 
 const MAX_HISTORY: usize = 50;
 const WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS: usize = 6;
@@ -44,6 +45,7 @@ pub struct Editor<Buff: TextBuffer> {
     pub(crate) is_initial_launch: bool,
     pub(crate) copy_register: CopyRegister,
     highlighter: Highlighter,
+    lsp: tokio::sync::mpsc::Receiver<crate::lsp::Body>,
 }
 
 impl<Buff: TextBuffer> Editor<Buff> {
@@ -54,7 +56,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
     ///
     /// # Returns
     /// A new `MainEditor` instance initialized with the given buffer and default cursor position.
-    pub fn new(buffer: Buff, launch_without_target: bool) -> Self {
+    pub fn new(buffer: Buff, launch_without_target: bool, receiver: Receiver<lsp::Body>) -> Self {
         Self {
             highlighter: Highlighter::new(buffer.get_coalesced_bytes())
                 .expect("Tree sitter needs to parse."),
@@ -69,6 +71,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
             viewport: Viewport::default(),
             is_initial_launch: launch_without_target,
             copy_register: CopyRegister::default(),
+            lsp: receiver,
         }
     }
 
