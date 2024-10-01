@@ -29,7 +29,7 @@ use std::{fs::OpenOptions, io::Read, panic, path::PathBuf};
 
 mod error;
 use buffer::VecBuffer;
-use editor::{Editor, FileType};
+use editor::Editor;
 use error::{Error, Result};
 
 mod bars;
@@ -67,34 +67,61 @@ struct Cli {
     #[arg(default_value = "")]
     file: String,
 }
-async fn main() {
+
+fn main() {
+    let runtime = tokio::runtime::Runtime::new().expect("Cant run without a runtime");
+    runtime.block_on(start())
+}
+
+async fn start() {
+    // Necessities
     setup_panic();
     let cli = Cli::parse();
     setup_tracing(cli.debug);
+    let path = PathBuf::from(cli.file);
+    let test = cli.test;
+    let ext: lsp::client::FileType = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .into();
 
     let (s, r) = tokio::sync::mpsc::channel(DEFAULT_CHANNEL_CAPACITY);
 
-    let language_server = lsp::client::LSPClient::new(s);
-    let mut instance = initialize_editor(&cli, r);
+    // Start Editor
+    let path_for_editor = path.clone();
+    let _editor_handle = tokio::task::spawn_blocking(move || {
+        let mut instance = initialize_editor(path_for_editor, test, r);
 
-    match instance.run_main_loop() {
-        Err(Error::ExitCall) => (),
-        Ok(()) => panic!("Editor should never return without an error"),
-        otherwise => {
-            info!("Err of type {otherwise:?} should be handled before reaching the main function.")
+        match instance.run_main_loop() {
+            Err(Error::ExitCall) => (),
+            Ok(()) => panic!("Editor should never return without an error"),
+            otherwise => {
+                info!("Err of type {otherwise:?} should be handled before reaching the main function.")
+            }
         }
-    }
+    });
+
+    // Start LSP
+    tokio::spawn(async move {
+        let mut language_server = lsp::client::LSPClient::new(s, ext, &path)
+            .await
+            .expect("Language server initialization failed.");
+        loop {
+            language_server.listen_and_serve().await;
+        }
+    });
 }
 
-fn initialize_editor(cli: &Cli, sender: Receiver<lsp::Body>) -> Editor<VecBuffer> {
-    if cli.test {
-        return new_from_file(&"./test_file.ntxt".into());
+fn initialize_editor(path: PathBuf, test: bool, rec: Receiver<lsp::Body>) -> Editor<VecBuffer> {
+    if test {
+        return new_from_file(&"./test_file.ntxt".into(), rec);
     }
 
-    if cli.file.is_empty() {
-        editor::Editor::new(VecBuffer::new(vec![" ".to_string()]), true, "")
+    if !path.exists() {
+        editor::Editor::new(VecBuffer::new(vec![" ".to_string()]), true, rec)
     } else {
-        new_from_file(&cli.file.clone().into())
+        new_from_file(&path, rec)
     }
 }
 /// Creates a `MainEditor` instance from a file/
@@ -110,7 +137,7 @@ fn initialize_editor(cli: &Cli, sender: Receiver<lsp::Body>) -> Editor<VecBuffer
 /// # Panics
 /// - If the file can't be read.
 /// - If the file content is not valid UTF-8.
-pub fn new_from_file(p: &PathBuf) -> Editor<VecBuffer> {
+pub fn new_from_file(p: &PathBuf, rec: Receiver<lsp::Body>) -> Editor<VecBuffer> {
     let mut file = OpenOptions::new()
         .read(true)
         .write(true)
@@ -122,8 +149,7 @@ pub fn new_from_file(p: &PathBuf) -> Editor<VecBuffer> {
     let _ = file.read_to_string(&mut content);
 
     let buf = VecBuffer::new(content.lines().map(String::from).collect());
-    let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("");
-    Editor::new(buf, false, ext)
+    Editor::new(buf, false, rec)
 }
 
 fn setup_tracing(debug: bool) {
