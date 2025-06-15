@@ -1,5 +1,3 @@
-use std::process::exit;
-
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 
 use crate::{
@@ -195,7 +193,9 @@ impl<Buff: TextBuffer> Editor<Buff> {
                 }
             }
             'W' => repeat!(self.move_to_next_word_after_whitespace()?; carry_over),
+            'B' => repeat!(self.move_to_prev_word_after_whitespace()?; carry_over),
             'w' => repeat!(self.move_to_next_non_alphanumeric()?; carry_over),
+            'b' => repeat!(self.move_to_prev_non_alphanumeric()?; carry_over),
             'G' => self.move_to_lowest_line(),
             'x' => self.delete_under_cursor()?,
             'X' => self.delete_before_cursor()?,
@@ -284,6 +284,16 @@ impl<Buff: TextBuffer> Editor<Buff> {
         Ok(())
     }
 
+    fn move_to_prev_word_after_whitespace(&mut self) -> Result<()> {
+        let mut pos = self.pos();
+        pos.col = pos.col.saturating_sub(1);
+
+        let mut dest = self.buffer.rfind(char::is_whitespace, pos)?;
+        dest = self.buffer.rfind(|ch| !char::is_whitespace(ch), dest)?;
+        self.go(dest);
+        Ok(())
+    }
+
     fn move_to_next_non_alphanumeric(&mut self) -> Result<()> {
         let mut pos = self.pos();
         if self.buffer.max_col(pos) > pos.col {
@@ -292,6 +302,16 @@ impl<Buff: TextBuffer> Editor<Buff> {
 
         let mut dest = self.buffer.find(|ch| !char::is_whitespace(ch), pos)?;
         dest = self.buffer.find(|ch| !char::is_alphanumeric(ch), dest)?;
+        self.go(dest);
+        Ok(())
+    }
+
+    fn move_to_prev_non_alphanumeric(&mut self) -> Result<()> {
+        let mut pos = self.pos();
+        pos.col = pos.col.saturating_sub(1);
+
+        let mut dest = self.buffer.rfind(|ch| !char::is_whitespace(ch), pos)?;
+        dest = self.buffer.rfind(|ch| !char::is_alphanumeric(ch), dest)?;
         self.go(dest);
         Ok(())
     }

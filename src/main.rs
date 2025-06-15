@@ -46,7 +46,7 @@ mod viewport;
 use clap::Parser;
 mod common;
 pub use common::*;
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::Receiver;
 pub use tracing::{error, info, span, warn, Instrument};
 pub use tracing_subscriber::{filter::EnvFilter, fmt::Subscriber, prelude::*, Layer};
 pub use tracing_tree::HierarchicalLayer;
