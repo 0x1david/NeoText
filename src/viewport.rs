@@ -1,6 +1,7 @@
 use crossterm::execute;
 
 use crate::{editor::LEFT_RESERVED_COLUMNS, LineCol};
+use std::io::Write;
 
 const BAR_GAP: u16 = 2;
 
@@ -72,11 +73,18 @@ impl Viewport {
 
 impl Drop for Viewport {
     fn drop(&mut self) {
-        let _raw = crossterm::terminal::disable_raw_mode();
-        let _exe = crossterm::execute!(
+        if let Err(e) = crossterm::terminal::disable_raw_mode() {
+            eprintln!("Failed to disable raw mode: {}", e);
+        }
+
+        if let Err(e) = crossterm::execute!(
             self.terminal,
-            crossterm::terminal::Clear(crossterm::terminal::ClearType::All),
-            crossterm::terminal::LeaveAlternateScreen
-        );
+            crossterm::terminal::LeaveAlternateScreen,
+            crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
+        ) {
+            eprintln!("Failed to restore terminal: {}", e);
+        }
+
+        let _ = self.terminal.flush();
     }
 }

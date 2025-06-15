@@ -31,7 +31,14 @@ impl<Buff: TextBuffer> Editor<Buff> {
         })?;
         self.move_cursor();
         self.force_within_bounds();
+        self.wait_for_input(carry_over, prev_char)
+    }
 
+    pub fn wait_for_input(
+        &mut self,
+        carry_over: Option<i32>,
+        prev_char: Option<char>,
+    ) -> Result<()> {
         if let Event::Key(key_event) = event::read()? {
             match (key_event.code, key_event.modifiers) {
                 (KeyCode::Char(ch), mods) => {
@@ -47,13 +54,11 @@ impl<Buff: TextBuffer> Editor<Buff> {
                 }
                 (KeyCode::End, _) => self.move_to_end_of_line(),
                 (KeyCode::Home, _) => self.move_to_first_col(),
-                (KeyCode::Esc, _) => exit(0),
                 _ => {
                     notif_bar!("nothing");
                 }
             }
         }
-
         Ok(())
     }
     pub fn handle_combination_input(
