@@ -1,13 +1,13 @@
 use crossterm::style::Color;
 
 pub trait Theme {
-    fn from_str(&self, element: &str) -> Color;
+    fn style_str(&self, element: &str) -> Color;
 }
 
 pub struct DefaultTheme {}
 
 impl Theme for DefaultTheme {
-    fn from_str(&self, el: &str) -> Color {
+    fn style_str(&self, el: &str) -> Color {
         match el {
             // Functions and methods
             "function" | "method" | "constructor" => Color::Yellow,
@@ -61,7 +61,7 @@ impl Theme for DefaultTheme {
 // All credits for this theme go to sainnhe - `https://github.com/sainnhe/sonokai`
 pub struct Sonokai;
 impl Theme for Sonokai {
-    fn from_str(&self, el: &str) -> Color {
+    fn style_str(&self, el: &str) -> Color {
         match el {
             // Keywords
             "keyword"
@@ -222,7 +222,7 @@ impl Theme for Sonokai {
 pub struct MonoAndromeda;
 
 impl Theme for MonoAndromeda {
-    fn from_str(&self, el: &str) -> Color {
+    fn style_str(&self, el: &str) -> Color {
         match el {
             // Keywords
             "keyword"
@@ -384,7 +384,7 @@ impl Theme for MonoAndromeda {
 pub struct Monokai;
 
 impl Theme for Monokai {
-    fn from_str(&self, el: &str) -> Color {
+    fn style_str(&self, el: &str) -> Color {
         match el {
             // Keywords
             "keyword"

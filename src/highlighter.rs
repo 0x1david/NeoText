@@ -1,6 +1,6 @@
 use crate::{
     theme::{self, Theme},
-    LineCol, Result,
+    Result,
 };
 use crossterm::style::Color;
 use rangemap::RangeMap;
@@ -25,7 +25,7 @@ impl Highlighter {
 
         Ok(Self {
             query,
-            theme: Box::new(theme::MonoAndromeda {}),
+            theme: Box::new(theme::Sonokai {}),
             tree: parser.parse(text, None),
             parser,
         })
@@ -46,7 +46,7 @@ impl Highlighter {
                 let node = capture.node;
                 let range = node.byte_range();
                 let scope = self.query.capture_names()[capture.index as usize];
-                let style = self.theme.from_str(scope);
+                let style = self.theme.style_str(scope);
 
                 style_map.insert(range, Style::new(style, Color::Reset, false, false));
             }
