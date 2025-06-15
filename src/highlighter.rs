@@ -7,6 +7,8 @@ use rangemap::RangeMap;
 use tree_sitter::{Parser, Query, QueryCursor};
 use tree_sitter_rust::{language, HIGHLIGHTS_QUERY};
 
+// Currently Highlighter with Treesitter keeps reparsing the entire document all the time, TODO:
+// Fix
 pub struct Highlighter {
     parser: Parser,
     query: Query,

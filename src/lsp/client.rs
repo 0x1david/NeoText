@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use super::data::{initialize_params, Body};
+use super::data::Body;
 use crate::Result;
 use tokio::io::AsyncReadExt;
 use tokio::process::{ChildStdin, ChildStdout};

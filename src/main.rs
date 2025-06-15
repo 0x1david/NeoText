@@ -23,10 +23,9 @@
 //          Different cursors (Visuals)
 //
 // Bugs To Fix:
-//      Crashes when B b backwards from 0th position
 //      Constant crashing
 #![allow(dead_code, clippy::cast_possible_wrap)]
-use std::{fs::OpenOptions, io::Read, panic, path::PathBuf};
+use std::{panic, path::PathBuf};
 
 mod error;
 use buffer::VecBuffer;
@@ -139,15 +138,11 @@ fn initialize_editor(path: PathBuf, test: bool, rec: Receiver<lsp::Body>) -> Edi
 /// - If the file can't be read.
 /// - If the file content is not valid UTF-8.
 pub fn new_from_file(p: &PathBuf, rec: Receiver<lsp::Body>) -> Editor<VecBuffer> {
-    let mut file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .open(p)
-        .expect("This should never fail.");
-
-    let mut content = String::new();
-    let _ = file.read_to_string(&mut content);
+    let content = if p.exists() {
+        std::fs::read_to_string(p).expect("Failed to read file")
+    } else {
+        String::new()
+    };
 
     let buf = VecBuffer::new(content.lines().map(String::from).collect());
     Editor::new(buf, false, rec)

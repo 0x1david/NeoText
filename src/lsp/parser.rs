@@ -64,9 +64,8 @@ impl<'pl> LspParser<'pl> {
         let length = content.header.clone().unwrap().content_length;
 
         let body_str = &self.payload[self.start_pointer..self.start_pointer + length as usize];
-        let body: Body = serde_json::from_str(body_str).map_err(|e| {
-            Error::ParsingError(format!("Deserializing body with serde failed: {e}"))
-        })?;
+        let body: Body = serde_json::from_str(body_str)
+            .map_err(|e| Error::Parsing(format!("Deserializing body with serde failed: {e}")))?;
         Ok(content.add_body(body))
     }
     fn parse_header(&mut self, content: ContentBuilder<'pl>) -> Result<ContentBuilder<'pl>> {
@@ -77,7 +76,7 @@ impl<'pl> LspParser<'pl> {
             self.end_pointer = self.start_pointer
                 + self.payload[self.start_pointer..]
                     .find(':')
-                    .ok_or(Error::ParsingError(
+                    .ok_or(Error::Parsing(
                         "Couldn't find `:` between name and value in header of the payload."
                             .to_string(),
                     ))?;
@@ -88,7 +87,7 @@ impl<'pl> LspParser<'pl> {
             self.end_pointer = self.start_pointer
                 + self.payload[self.start_pointer..]
                     .find(CRLF)
-                    .ok_or(Error::ParsingError(
+                    .ok_or(Error::Parsing(
                         "Couldn't find `\r\n` delimiter after a header section of the payload."
                             .to_string(),
                     ))?;
@@ -99,19 +98,19 @@ impl<'pl> LspParser<'pl> {
             match name {
                 "Content-Length" => {
                     content_length = value.parse::<u16>().map_err(|e| {
-                        Error::ParsingError(format!(
+                        Error::Parsing(format!(
                             "Failed parsing the content-length value: `{value}` as a u16: {e}"
                         ))
                     })?
                 }
                 "Content-Type" => content_type = Some(value),
-                _ => Err(Error::ParsingError(format!("Unknown header type: {name}")))?,
+                _ => Err(Error::Parsing(format!("Unknown header type: {name}")))?,
             };
             self.start_pointer += CRLF_BYTE_LEN;
             self.end_pointer += CRLF_BYTE_LEN;
         }
         if content_length == 0 {
-            return Err(Error::ParsingError(
+            return Err(Error::Parsing(
                 "Content-length must be specified and higher than zero.".to_string(),
             ));
         };

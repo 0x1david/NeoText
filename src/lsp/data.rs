@@ -103,7 +103,7 @@ impl Body {
     pub fn get_response(self) -> Result<Response> {
         match self {
             Self::Response(r) => Ok(r),
-            _ => Err(Error::ParsingError(
+            _ => Err(Error::Parsing(
                 "Tried getting response from body that is not a response body.".to_string(),
             )),
         }
@@ -111,7 +111,7 @@ impl Body {
     fn get_request(self) -> Result<Request> {
         match self {
             Self::Request(r) => Ok(r),
-            _ => Err(Error::ParsingError(
+            _ => Err(Error::Parsing(
                 "Tried getting request from body that is not a request body.".to_string(),
             )),
         }
