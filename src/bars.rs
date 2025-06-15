@@ -4,7 +4,7 @@ use crossterm::{
     style::{self, Color},
     terminal::{self, ClearType},
 };
-use std::io::{stdout, Write};
+use std::io::Write;
 
 pub const INFO_BAR_Y_LOCATION: u16 = 1;
 pub const NOTIFICATION_BAR_Y_LOCATION: u16 = 0;
@@ -12,19 +12,6 @@ pub const INFO_BAR_LINEWIDTH_INDICATOR_X_LOCATION_NEGATIVE: u16 = 1;
 pub const INFO_BAR_MODAL_INDICATOR_X_LOCATION: u16 = 1;
 pub const NOTIFICATION_BAR_TEXT_X_LOCATION: u16 = 2;
 pub const BAR_VERT_SPACE: u16 = 2;
-
-// pub struct Theme {
-//     background: Color,
-//     text: Color,
-//     literals: Color,
-//     idents: Color,
-//     numerals: Color,
-//     keywords: Color,
-//     calls: Color,
-//     comments: Color,
-//     others: Color,
-// }
-
 pub const DEFAULT_FG: Color = Color::Reset;
 pub const DEFAULT_BG: Color = Color::Reset;
 
@@ -142,7 +129,7 @@ pub fn get_notif_bar_content() -> String {
 /// - Color setting or resetting fails
 pub fn get_info_bar_content(term_width: usize, mode: &Modal, pos: LineCol) -> String {
     let modal_string = format!("{mode}");
-    let mut pos = pos.clone();
+    let mut pos = pos;
     pos.line += 1;
     let pos_string = format!("{pos}");
 

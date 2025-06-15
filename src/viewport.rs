@@ -57,7 +57,7 @@ impl Viewport {
     }
     pub fn view_cursor(&self, cursor: LineCol) -> LineCol {
         let mut c = cursor - self.topleft;
-        c.col += LEFT_RESERVED_COLUMNS - 1;
+        c.col += LEFT_RESERVED_COLUMNS;
         c
     }
     pub fn update_dimensions(&mut self) {

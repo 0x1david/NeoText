@@ -23,10 +23,10 @@ use tokio::sync::mpsc::Receiver;
 const MAX_HISTORY: usize = 50;
 const WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS: usize = 6;
 pub const LINE_NUMBER_SEPARATOR_EMPTY_COLUMNS: usize = 1; // TODO: Make this dynamic and shifting
-                                                          // when no of digits increases
+                                                          // when no. of digits increases
 pub const LINE_NUMBER_RESERVED_COLUMNS: usize = 5;
 pub const LEFT_RESERVED_COLUMNS: usize =
-    LINE_NUMBER_RESERVED_COLUMNS + LINE_NUMBER_RESERVED_COLUMNS;
+    LINE_NUMBER_RESERVED_COLUMNS + LINE_NUMBER_SEPARATOR_EMPTY_COLUMNS;
 
 /// The main editor is used as the main API for all commands
 pub struct Editor<Buff: TextBuffer> {
@@ -414,16 +414,16 @@ impl<Buff: TextBuffer> Editor<Buff> {
         {
             let line_number = self.viewport.topleft.line + i;
 
+            self.create_line_numbers(line_number + 1)?;
+
+            self.draw_line_new(line, line_number, &mut byte_index, &style_map)?;
+            byte_index += 1;
+
             crossterm::queue!(
                 self.viewport.terminal,
                 crossterm::cursor::MoveDown(1),
                 crossterm::cursor::MoveToColumn(0),
             )?;
-
-            self.create_line_numbers(line_number + 1)?;
-
-            self.draw_line_new(line, line_number, &mut byte_index, &style_map)?;
-            byte_index += 1;
         }
         self.viewport.terminal.flush()?;
 
@@ -599,7 +599,7 @@ impl<Buff: TextBuffer> Editor<Buff> {
         #[allow(clippy::cast_possible_truncation)]
         let _ = crossterm::execute!(
             self.viewport.terminal,
-            crossterm::cursor::MoveTo(cursor.col as u16, cursor.line as u16 + 1)
+            crossterm::cursor::MoveTo(cursor.col as u16, cursor.line as u16)
         );
     }
 

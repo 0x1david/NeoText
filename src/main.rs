@@ -23,6 +23,7 @@
 //          Different cursors (Visuals)
 //
 // Bugs To Fix:
+//      Crashes when B b backwards from 0th position
 //      Constant crashing
 #![allow(dead_code, clippy::cast_possible_wrap)]
 use std::{fs::OpenOptions, io::Read, panic, path::PathBuf};
