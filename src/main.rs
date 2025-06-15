@@ -1,10 +1,9 @@
 // Features to implement:
 //      TEXT EDITING:
-//          Syntax Highlighting
 //          Regex Command Processing
-//          Undo and Redo
-//          Terminal Mode
+//          Syntax Highlighting -> Undo and Redo
 //
+//          Terminal Mode
 //          Macros
 //          Marks
 //

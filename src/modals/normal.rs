@@ -29,7 +29,11 @@ impl<Buff: TextBuffer> Editor<Buff> {
         })?;
         self.move_cursor();
         self.force_within_bounds();
-        self.wait_for_input(carry_over, prev_char)
+        match self.wait_for_input(carry_over, prev_char) {
+            Err(Error::PatternNotFound) => Ok(()),
+            Ok(_) => Ok(()),
+            err => err,
+        }
     }
 
     pub fn wait_for_input(
@@ -193,8 +197,8 @@ impl<Buff: TextBuffer> Editor<Buff> {
                 }
             }
             'W' => repeat!(self.move_to_next_word_after_whitespace()?; carry_over),
-            'B' => repeat!(self.move_to_prev_word_after_whitespace()?; carry_over),
             'w' => repeat!(self.move_to_next_non_alphanumeric()?; carry_over),
+            'B' => repeat!(self.move_to_prev_word_after_whitespace()?; carry_over),
             'b' => repeat!(self.move_to_prev_non_alphanumeric()?; carry_over),
             'G' => self.move_to_lowest_line(),
             'x' => self.delete_under_cursor()?,
