@@ -27,7 +27,7 @@
 use std::{panic, path::PathBuf};
 
 mod error;
-use buffer::VecBuffer;
+use buffer::StringVec;
 use editor::Editor;
 use error::{Error, Result};
 
@@ -112,13 +112,13 @@ async fn start() {
     });
 }
 
-fn initialize_editor(path: PathBuf, test: bool, rec: Receiver<lsp::Body>) -> Editor<VecBuffer> {
+fn initialize_editor(path: PathBuf, test: bool, rec: Receiver<lsp::Body>) -> Editor<StringVec> {
     if test {
         return new_from_file(&"./test_file.ntxt".into(), rec);
     }
 
     if !path.exists() {
-        editor::Editor::new(VecBuffer::new(vec![" ".to_string()]), true, rec)
+        editor::Editor::new(StringVec::new(vec![" ".to_string()]), true, rec)
     } else {
         new_from_file(&path, rec)
     }
@@ -136,14 +136,14 @@ fn initialize_editor(path: PathBuf, test: bool, rec: Receiver<lsp::Body>) -> Edi
 /// # Panics
 /// - If the file can't be read.
 /// - If the file content is not valid UTF-8.
-pub fn new_from_file(p: &PathBuf, rec: Receiver<lsp::Body>) -> Editor<VecBuffer> {
+pub fn new_from_file(p: &PathBuf, rec: Receiver<lsp::Body>) -> Editor<StringVec> {
     let content = if p.exists() {
         std::fs::read_to_string(p).expect("Failed to read file")
     } else {
         String::new()
     };
 
-    let buf = VecBuffer::new(content.lines().map(String::from).collect());
+    let buf = StringVec::new(content.lines().map(String::from).collect());
     Editor::new(buf, false, rec)
 }
 

@@ -27,7 +27,7 @@ impl Highlighter {
 
         Ok(Self {
             query,
-            theme: Box::new(theme::Sonokai {}),
+            theme: Box::new(theme::NeonTokyo {}),
             tree: parser.parse(text, None),
             parser,
         })

@@ -59,8 +59,8 @@ impl Theme for DefaultTheme {
 }
 
 // All credits for this theme go to sainnhe - `https://github.com/sainnhe/sonokai`
-pub struct Sonokai;
-impl Theme for Sonokai {
+pub struct NeonTokyo;
+impl Theme for NeonTokyo {
     fn style_str(&self, el: &str) -> Color {
         match el {
             // Keywords
