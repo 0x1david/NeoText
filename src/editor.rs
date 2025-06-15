@@ -22,7 +22,8 @@ use tokio::sync::mpsc::Receiver;
 
 const MAX_HISTORY: usize = 50;
 const WINDOW_MAX_CURSOR_PROXIMITY_TO_WINDOW_BOUNDS: usize = 6;
-pub const LINE_NUMBER_SEPARATOR_EMPTY_COLUMNS: usize = 4;
+pub const LINE_NUMBER_SEPARATOR_EMPTY_COLUMNS: usize = 1; // TODO: Make this dynamic and shifting
+                                                          // when no of digits increases
 pub const LINE_NUMBER_RESERVED_COLUMNS: usize = 5;
 pub const LEFT_RESERVED_COLUMNS: usize =
     LINE_NUMBER_RESERVED_COLUMNS + LINE_NUMBER_RESERVED_COLUMNS;
